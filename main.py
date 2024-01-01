@@ -1,8 +1,7 @@
 from src import Amazon
 
 queries = [
-  "Mango",
-  "Watermelon",
+  "Macbook",
 ]
 
-Amazon.search(queries, max=10)
+Amazon.search(queries)
