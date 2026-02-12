@@ -116,3 +116,4 @@ create_cache.py
 error_logs/
 
 gpt/
+.history/

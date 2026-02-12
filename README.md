@@ -1,4 +1,4 @@
-![Amazon Scraper Featured Image](https://raw.githubusercontent.com/omkarcloud/amazon-scraper/main/amazon-scraper-featured-image.png)
+![Amazon Scraper Featured Image](https://raw.githubusercontent.com/omkarcloud/amazon-scraper/master/amazon-scraper-featured-image.png)
 
 # Amazon Scraper API
 
