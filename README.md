@@ -32,12 +32,12 @@ REST API to search products, get details, browse categories, and fetch reviews f
 
 ## Get API Key
 
-Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key, and use it in requests. 5,000 requests are free every month.
+Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key, and use it in requests. 5,000 requests are free every month, and it takes 1 minute to [create an account](https://www.omkar.cloud/auth/sign-up?redirect=/api-key).
 
 ## Quick Start
 
 ```bash
-curl -X GET "https://amazon-scraper.omkar.cloud/amazon/search?query=iPhone%2016" \
+curl -X GET "https://amazon-scraper-api.omkar.cloud/amazon/search?query=iPhone%2016" \
   -H "API-Key: YOUR_API_KEY"
 ```
 
@@ -72,7 +72,7 @@ import requests
 
 # Search for products
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/search",
+    "https://amazon-scraper-api.omkar.cloud/amazon/search",
     params={"query": "iPhone 16", "country_code": "US"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
@@ -86,14 +86,8 @@ print(response.json())
 ### Product Search
 
 ```
-GET https://amazon-scraper.omkar.cloud/amazon/search
+GET https://amazon-scraper-api.omkar.cloud/amazon/search
 ```
-
-#### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `API-Key` | Yes | API key from [omkar.cloud/api-key](https://www.omkar.cloud/api-key) |
 
 #### Parameters
 
@@ -110,7 +104,7 @@ GET https://amazon-scraper.omkar.cloud/amazon/search
 import requests
 
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/search",
+    "https://amazon-scraper-api.omkar.cloud/amazon/search",
     params={"query": "iPhone 16", "country_code": "US"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
@@ -157,14 +151,8 @@ print(response.json())
 ### Products by Category
 
 ```
-GET https://amazon-scraper.omkar.cloud/amazon/products/category
+GET https://amazon-scraper-api.omkar.cloud/amazon/products/category
 ```
-
-#### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `API-Key` | Yes | API key from [omkar.cloud/api-key](https://www.omkar.cloud/api-key) |
 
 #### Parameters
 
@@ -181,7 +169,7 @@ GET https://amazon-scraper.omkar.cloud/amazon/products/category
 import requests
 
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/products/category",
+    "https://amazon-scraper-api.omkar.cloud/amazon/products/category",
     params={"category_id": "16225007011", "country_code": "US"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
@@ -228,14 +216,8 @@ print(response.json())
 ### Product Details
 
 ```
-GET https://amazon-scraper.omkar.cloud/amazon/product-details
+GET https://amazon-scraper-api.omkar.cloud/amazon/product-details
 ```
-
-#### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `API-Key` | Yes | API key from [omkar.cloud/api-key](https://www.omkar.cloud/api-key) |
 
 #### Parameters
 
@@ -250,7 +232,7 @@ GET https://amazon-scraper.omkar.cloud/amazon/product-details
 import requests
 
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/product-details",
+    "https://amazon-scraper-api.omkar.cloud/amazon/product-details",
     params={"asin": "B0FWD726XF", "country_code": "US"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
@@ -621,14 +603,8 @@ Returns 50+ fields including price, rating, description, key features, technical
 ### Top Product Reviews
 
 ```
-GET https://amazon-scraper.omkar.cloud/amazon/product-reviews/top
+GET https://amazon-scraper-api.omkar.cloud/amazon/product-reviews/top
 ```
-
-#### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `API-Key` | Yes | API key from [omkar.cloud/api-key](https://www.omkar.cloud/api-key) |
 
 #### Parameters
 
@@ -643,7 +619,7 @@ GET https://amazon-scraper.omkar.cloud/amazon/product-reviews/top
 import requests
 
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/product-reviews/top",
+    "https://amazon-scraper-api.omkar.cloud/amazon/product-reviews/top",
     params={"asin": "B0FWD726XF", "country_code": "US"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
@@ -697,7 +673,7 @@ print(response.json())
 
 ```python
 response = requests.get(
-    "https://amazon-scraper.omkar.cloud/amazon/search",
+    "https://amazon-scraper-api.omkar.cloud/amazon/search",
     params={"query": "iPhone 16"},
     headers={"API-Key": "YOUR_API_KEY"}
 )
