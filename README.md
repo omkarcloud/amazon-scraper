@@ -4,14 +4,14 @@
 
 REST API to search products, get details, browse categories, and fetch reviews from 24 Amazon marketplaces. Real-time data, structured JSON.
 
-## Features
+## Key Features
 
 - Search Amazon products by keyword or ASIN
 - Get 50+ data points per product (price, rating, variants, specs, images, videos)
 - Browse entire Amazon categories
 - Fetch top product reviews with ratings and verified purchase status
 - Covers 24 Amazon marketplaces (US, UK, DE, JP, IN, and more)
-- 5,000 requests/month on free tier
+- **5,000 requests/month on free tier**
 - Example Response:
 ```json
 {
@@ -32,7 +32,12 @@ REST API to search products, get details, browse categories, and fetch reviews f
 
 ## Get API Key
 
-Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key, and use it in requests. 5,000 requests are free every month, and it takes 1 minute to [create an account](https://www.omkar.cloud/auth/sign-up?redirect=/api-key).
+Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key.
+
+It takes just 2 minutes to sign up. You get 5,000 free requests every month—more than enough for most users to get detailed Amazon data without paying a dime.
+
+This is a well built product, and your search for the best Amazon Scraper API ends right here. 
+
 
 ## Quick Start
 
