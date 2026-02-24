@@ -2,17 +2,14 @@
 
 # Amazon Scraper API
 
-REST API to search products, get details, browse categories, and fetch reviews from 24 Amazon marketplaces. Real-time data, structured JSON.
+Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 5,000 free requests/month.
 
 ## Key Features
 
-- Search Amazon products by keyword or ASIN
-- Get 50+ data points per product (price, rating, variants, specs, images, videos)
-- Browse entire Amazon categories
-- Fetch top product reviews with ratings and verified purchase status
-- Covers 24 Amazon marketplaces (US, UK, DE, JP, IN, and more)
-- **5,000 requests/month on free tier**
-- Example Response:
+- Search Amazon products, get product details, browse by category, and fetch top reviews — all via 1 API.
+- 5,000 free queries per month. No credit card required.
+
+Here's a sample response for a **product search results page**:
 ```json
 {
   "title": "Apple iPhone 15, 128GB, Black - Unlocked (Renewed)",
@@ -34,7 +31,7 @@ REST API to search products, get details, browse categories, and fetch reviews f
 
 Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key.
 
-It takes just 2 minutes to sign up. You get 5,000 free requests every month—more than enough for most users to get detailed Amazon data without paying a dime.
+It takes just 2 minutes to sign up. You get 5,000 free requests every month for detailed Amazon data than enough for most users to get their job done without paying a dime.
 
 This is a well built product, and your search for the best Amazon Scraper API ends right here. 
 
@@ -697,21 +694,34 @@ elif response.status_code == 429:
 
 ### What data does the API return?
 
-**Product Search** returns title, price, rating, review count, sales volume, ASIN, product URL, image URL, Best Seller / Amazon's Choice / Prime badges, delivery info, number of offers, and lowest offer price.
+**Product Search** returns per product:
+- Title, price, original price, currency
+- Star rating, review count, sales volume
+- ASIN, product URL, image URL
+- Best Seller, Amazon's Choice, and Prime badges
+- Delivery info, number of offers, lowest offer price
 
-**Product Details** returns 50+ fields — full description, key features, technical specs, all images and videos, rating distribution, product variants (size, color, etc.), category hierarchy, brand info, frequently bought together, and top reviews.
+**Product Details** returns 50+ fields including:
+- Full description, key features, technical specs
+- All product images and videos
+- Rating distribution breakdown
+- Product variations (size, color, etc.)
+- Category hierarchy, brand info
+- Frequently bought together items
+- Customer feedback summary and top reviews
 
-**Top Reviews** returns review title, text, rating, date, verified purchase status, helpful vote count, reviewer name, avatar, profile link, review images, and videos.
+**Top Reviews** returns per review:
+- Review title, text, rating, and date
+- Verified purchase status, helpful vote count
+- Reviewer name, avatar, and profile link
+- Review images and videos
+
 
 All in structured JSON. Ready to use in your app.
 
 ### How accurate is the data?
 
 Data is pulled from Amazon in real time. Every API call fetches live data — not cached or stale results. Prices, availability, ratings, and reviews reflect what's on Amazon right now.
-
-### Do I need to handle proxies or CAPTCHAs?
-
-No. The API handles all of that. You make a simple GET request and get clean JSON back. No proxy rotation, no CAPTCHA solving, no HTML parsing.
 
 ### What's the difference between Product Search and Products by Category?
 
