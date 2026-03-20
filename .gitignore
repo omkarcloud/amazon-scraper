@@ -117,3 +117,4 @@ error_logs/
 
 gpt/
 .history/
+.cursor/

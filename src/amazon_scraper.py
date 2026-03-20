@@ -1,126 +1,219 @@
-from typing import List,Optional, Union, Dict
-from botasaurus import bt
-from .write_output import write_output
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Sequence, Union
 
-from .search import FAILED_DUE_TO_CREDITS_EXHAUSTED, FAILED_DUE_TO_NO_KEY,FAILED_DUE_TO_NOT_SUBSCRIBED, FAILED_DUE_TO_UNKNOWN_ERROR, get_product, search
+from .database import (
+    DEFAULT_RAW_PRODUCTS_TABLE,
+    ensure_raw_products_table,
+    insert_raw_product_rows,
+)
+from .search import get_product, search
 
 
-def clean_data(social_details):
-    success, credits_exhausted, not_subscribed, unknown_error, no_key = [], [], [], [], []
+def _ensure_list(values: Union[str, Sequence[str]]) -> List[str]:
+    if isinstance(values, str):
+        return [values]
+    return list(values)
 
-    for detail in social_details:
-        if detail.get("error") is None:
-            success.append(detail)
-        elif detail["error"] == FAILED_DUE_TO_CREDITS_EXHAUSTED:
-            credits_exhausted.append(detail)
-        elif detail["error"] == FAILED_DUE_TO_NOT_SUBSCRIBED:
-            not_subscribed.append(detail)
-        elif detail["error"] == FAILED_DUE_TO_UNKNOWN_ERROR:
-            unknown_error.append(detail)
-        elif detail["error"] == FAILED_DUE_TO_NO_KEY:
-            no_key.append(detail)
 
-    return success, credits_exhausted, not_subscribed, unknown_error, no_key
+def _extract_search_products(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    data = payload.get("data", payload)
+    products = data.get("products", [])
+    if not isinstance(products, list):
+        return []
+    return products
 
-def print_data_errors(credits_exhausted, not_subscribed, unknown_error, no_key):
-    
-    if credits_exhausted:
-        name = "queries" if len(credits_exhausted) > 1 else "query"
-        print(f"Could not get data for {len(credits_exhausted)} {name} due to credit exhaustion. Please consider upgrading your plan by visiting https://rapidapi.com/Chetan11dev/api/amazon-product-scraper8/pricing to continue scraping data.")
 
-    if not_subscribed:
-        name = "queries" if len(not_subscribed) > 1 else "query"
-        print(f"Could not get data for {len(not_subscribed)} {name} as you are not subscribed to Amazon Scraper API. Please subscribe to a free plan by visiting https://rapidapi.com/Chetan11dev/api/amazon-product-scraper8/pricing")
+def _extract_asin(record: Dict[str, Any]) -> Optional[str]:
+    asin = record.get("asin")
+    if asin:
+        return asin
 
-    if unknown_error:
-        name = "queries" if len(unknown_error) > 1 else "query"
-        print(f"Could not get data for {len(unknown_error)} {name} due to Unknown Error.")
+    product_information = record.get("product_information", {})
+    if isinstance(product_information, dict):
+        return product_information.get("ASIN")
 
-    if no_key:
-        name = "queries" if len(no_key) > 1 else "query"
-        print(f"Could not get data for {len(no_key)} {name} as you are not subscribed to Amazon Scraper API. Please subscribe to a free plan by visiting https://rapidapi.com/Chetan11dev/api/amazon-product-scraper8/pricing")
+    return None
 
-      
+
 class Amazon:
-    
     @staticmethod
-    def search(query:  Union[str, List[str]],  key: Optional[str] =None,  use_cache: bool = True) -> Dict:
-        """
-        Function to scrape data from Amazon.
-        :param use_cache: Boolean indicating whether to use cached data.
-        :return: List of dictionaries with the scraped data.
-        """
-        cache = use_cache
-        if isinstance(query, str):
-            query = [query]  
-        
-        max = None
-
-        query = [{"query":query_query, "max": max} for query_query in query]
-        result = []
-        for item in query:
-            # TODO: max fixes
-            data = item
-            metadata = {"key": key}
-            
-            result_item = search(data, cache=cache, metadata=metadata)
-            
-            success, credits_exhausted, not_subscribed, unknown_error, no_key = clean_data([result_item])
-            print_data_errors(credits_exhausted, not_subscribed, unknown_error, no_key)
-
-            if success:
-                data = result_item.get('data')
-                if not data:
-                    data = {}
-
-                result_item = data.get('results', [])
-                result.extend(result_item)
-                write_output(item['query'], result_item,None)
-
-        if result:
-            # bt.write_json(result, "result")
-            write_output('_all',result, None, lambda x:x)
-        
-        search.close()
-
-        return result
+    def search(
+        query: Union[str, Sequence[str]],
+        key: Optional[str] = None,
+        country: str = "US",
+        page: int = 1,
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        for query_value in _ensure_list(query):
+            payload = search(
+                query=query_value,
+                key=key,
+                country=country,
+                page=page,
+                **filters,
+            )
+            results.extend(_extract_search_products(payload))
+        return results
 
     @staticmethod
-    def get_products(asin:  Union[str, List[str]],  key: Optional[str] =None,  use_cache: bool = True) -> Dict:
-        """
-        Function to scrape data from Amazon.
-        :param use_cache: Boolean indicating whether to use cached data.
-        :return: List of dictionaries with the scraped data.
-        """
-        cache = use_cache
-        if isinstance(asin, str):
-            asin = [asin]  
-        
-        asin = [{"asin":query_query} for query_query in asin]
-        result = []
-        for item in asin:
-            # TODO: max fixes
-            data = item
-            metadata = {"key": key}
-            
-            result_item = get_product(data, cache=cache, metadata=metadata)
-            
-            success, credits_exhausted, not_subscribed, unknown_error, no_key = clean_data([result_item])
-            print_data_errors(credits_exhausted, not_subscribed, unknown_error, no_key)
+    def get_products(
+        asin: Union[str, Sequence[str]],
+        key: Optional[str] = None,
+        country: str = "US",
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        payload = get_product(asin=asin, key=key, country=country, **filters)
+        if isinstance(payload, list):
+            return payload
+        data = payload.get("data", payload)
+        if isinstance(data, list):
+            return data
+        return [data]
 
-            if success:
-                data = result_item.get('data')
-                if not data:
-                    data = {}
+    @staticmethod
+    def build_raw_product_rows(
+        records: Sequence[Dict[str, Any]],
+        source_endpoint: str,
+        country: str,
+        search_query: Optional[str] = None,
+        request_metadata: Optional[Dict[str, Any]] = None,
+        record_create_timestamp: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        created_at = record_create_timestamp or datetime.now(timezone.utc)
+        base_metadata = request_metadata or {}
+        rows: List[Dict[str, Any]] = []
 
-                result_item = data
-                result.append(result_item)
-                # write_output(item['query'], result_item,None)
+        for record in records:
+            asin = _extract_asin(record)
+            if not asin:
+                continue
 
-        if result:
-            # bt.write_json(result, "result")
-            write_output('products',result, None, lambda x:x)
-        
-        search.close()
+            rows.append(
+                {
+                    "asin": asin,
+                    "record_create_timestamp": created_at,
+                    "source_endpoint": source_endpoint,
+                    "marketplace_country": country,
+                    "search_query": search_query,
+                    "request_metadata": base_metadata,
+                    "api_payload": record,
+                }
+            )
 
-        return result    
+        return rows
+
+    @staticmethod
+    def fetch_search_raw_rows(
+        query: Union[str, Sequence[str]],
+        key: Optional[str] = None,
+        country: str = "US",
+        page: int = 1,
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        all_rows: List[Dict[str, Any]] = []
+        for query_value in _ensure_list(query):
+            payload = search(
+                query=query_value,
+                key=key,
+                country=country,
+                page=page,
+                **filters,
+            )
+            rows = Amazon.build_raw_product_rows(
+                records=_extract_search_products(payload),
+                source_endpoint="product_search",
+                country=country,
+                search_query=query_value,
+                request_metadata={"page": page, **filters},
+            )
+            all_rows.extend(rows)
+        return all_rows
+
+    @staticmethod
+    def fetch_product_raw_rows(
+        asin: Union[str, Sequence[str]],
+        key: Optional[str] = None,
+        country: str = "US",
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        records = Amazon.get_products(asin=asin, key=key, country=country, **filters)
+        return Amazon.build_raw_product_rows(
+            records=records,
+            source_endpoint="product_details",
+            country=country,
+            request_metadata={**filters},
+        )
+
+    @staticmethod
+    def store_raw_rows(
+        connection,
+        rows: Sequence[Dict[str, Any]],
+        table_name: str = DEFAULT_RAW_PRODUCTS_TABLE,
+        create_table: bool = True,
+        commit: bool = True,
+    ) -> int:
+        if create_table:
+            ensure_raw_products_table(connection, table_name=table_name)
+        return insert_raw_product_rows(
+            connection,
+            rows=rows,
+            table_name=table_name,
+            commit=commit,
+        )
+
+    @staticmethod
+    def fetch_and_store_search_results(
+        query: Union[str, Sequence[str]],
+        connection,
+        key: Optional[str] = None,
+        country: str = "US",
+        page: int = 1,
+        table_name: str = DEFAULT_RAW_PRODUCTS_TABLE,
+        create_table: bool = True,
+        commit: bool = True,
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        rows = Amazon.fetch_search_raw_rows(
+            query=query,
+            key=key,
+            country=country,
+            page=page,
+            **filters,
+        )
+        if rows:
+            Amazon.store_raw_rows(
+                connection=connection,
+                rows=rows,
+                table_name=table_name,
+                create_table=create_table,
+                commit=commit,
+            )
+        return rows
+
+    @staticmethod
+    def fetch_and_store_product_details(
+        asin: Union[str, Sequence[str]],
+        connection,
+        key: Optional[str] = None,
+        country: str = "US",
+        table_name: str = DEFAULT_RAW_PRODUCTS_TABLE,
+        create_table: bool = True,
+        commit: bool = True,
+        **filters: Any,
+    ) -> List[Dict[str, Any]]:
+        rows = Amazon.fetch_product_raw_rows(
+            asin=asin,
+            key=key,
+            country=country,
+            **filters,
+        )
+        if rows:
+            Amazon.store_raw_rows(
+                connection=connection,
+                rows=rows,
+                table_name=table_name,
+                create_table=create_table,
+                commit=commit,
+            )
+        return rows

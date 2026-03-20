@@ -1,2 +1,4 @@
-botasaurus
-casefy
+requests
+pymysql
+sshtunnel
+cryptography
