@@ -5,6 +5,7 @@ Handles table creation, JSON parsing, incremental extraction,
 monthly aggregation, and market-share computation.
 """
 
+import html
 import json
 import logging
 import re
@@ -190,6 +191,46 @@ def ensure_all_tables(connection: pymysql.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Helpers: text cleaning
+# ---------------------------------------------------------------------------
+
+_MARKETPLACE_PREFIX_RE = re.compile(
+    r"【[^】]*(?:限定|限り|セール|特選)[^】]*】\s*",
+)
+
+_BRAND_ALIASES: Dict[str, str] = {
+    "de'longhi": "De'Longhi",
+    "delonghi": "De'Longhi",
+    "de longhi": "De'Longhi",
+    "nescafé": "NESCAFÉ",
+    "nescafe": "NESCAFÉ",
+    "black+decker": "BLACK+DECKER",
+}
+
+
+def clean_text(text: Optional[str]) -> Optional[str]:
+    """Decode HTML entities and strip marketplace-specific noise from text."""
+    if not text:
+        return text
+    text = html.unescape(str(text))
+    text = _MARKETPLACE_PREFIX_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text if text else None
+
+
+def clean_brand(brand: Optional[str]) -> Optional[str]:
+    """Normalize a brand name: decode entities, unify known aliases."""
+    if not brand:
+        return brand
+    brand = html.unescape(str(brand)).strip()
+    brand = _MARKETPLACE_PREFIX_RE.sub("", brand).strip()
+    lookup = brand.lower()
+    if lookup in _BRAND_ALIASES:
+        return _BRAND_ALIASES[lookup]
+    return brand if brand else None
+
+
+# ---------------------------------------------------------------------------
 # Helpers: JSON field extraction
 # ---------------------------------------------------------------------------
 
@@ -281,8 +322,8 @@ def _extract_payload_fields(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return {
-        "product_title": str(title)[:1024] if title else None,
-        "brand": extract_brand(payload),
+        "product_title": clean_text(str(title)[:1024]) if title else None,
+        "brand": clean_brand(extract_brand(payload)),
         "price": _safe_float(payload.get("product_price") or payload.get("price")),
         "currency": (str(payload["currency"])[:8] if payload.get("currency") else None),
         "star_rating": _safe_float(
@@ -427,6 +468,54 @@ _OUTIN_FILTER = (
 )
 
 
+def _apply_text_cleaning(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply clean_text / clean_brand to a DWH DataFrame in-place."""
+    if "product_title" in df.columns:
+        df["product_title"] = df["product_title"].apply(clean_text)
+    if "brand" in df.columns:
+        df["brand"] = df["brand"].apply(clean_brand)
+    return df
+
+
+def clean_dwh_data(connection: pymysql.Connection) -> int:
+    """One-time fix: update existing DWH rows with cleaned text/brand."""
+    with connection.cursor(pymysql.cursors.DictCursor) as cur:
+        cur.execute(
+            "SELECT id, product_title, brand "
+            "FROM gurysk_dwh.dwh_amazon_product_snapshot "
+            "WHERE product_title LIKE '%%&#%%' "
+            "   OR product_title LIKE '%%&amp;%%' "
+            "   OR product_title LIKE '%%【%%' "
+            "   OR brand LIKE '%%&#%%' "
+            "   OR brand LIKE '%%&amp;%%' "
+            "   OR brand LIKE '%%【%%'"
+        )
+        dirty_rows = cur.fetchall()
+
+    if not dirty_rows:
+        logger.info("clean_dwh_data: no dirty rows found.")
+        return 0
+
+    updates: List[Tuple] = []
+    for row in dirty_rows:
+        new_title = clean_text(row["product_title"])
+        new_brand = clean_brand(row["brand"])
+        if new_title != row["product_title"] or new_brand != row["brand"]:
+            updates.append((new_title, new_brand, row["id"]))
+
+    if updates:
+        with connection.cursor() as cur:
+            cur.executemany(
+                "UPDATE gurysk_dwh.dwh_amazon_product_snapshot "
+                "SET product_title = %s, brand = %s WHERE id = %s",
+                updates,
+            )
+        connection.commit()
+
+    logger.info("clean_dwh_data: %d rows cleaned.", len(updates))
+    return len(updates)
+
+
 def build_outin_daily_sales(connection: pymysql.Connection) -> int:
     """Aggregate DWH snapshots into dmt_outin_daily_sales (one row per asin/date)."""
     df = pd.read_sql(
@@ -437,6 +526,7 @@ def build_outin_daily_sales(connection: pymysql.Connection) -> int:
         logger.info("build_outin_daily_sales: no OutIn data in DWH.")
         return 0
 
+    df = _apply_text_cleaning(df)
     df = df.sort_values("observed_at")
 
     day_end = (
@@ -500,6 +590,7 @@ def build_outin_monthly_sales(connection: pymysql.Connection) -> int:
         logger.info("build_outin_monthly_sales: no OutIn data in DWH.")
         return 0
 
+    df = _apply_text_cleaning(df)
     df = df.sort_values("observed_at")
 
     month_end = (
@@ -578,6 +669,7 @@ def build_outin_review_trend(connection: pymysql.Connection) -> int:
         logger.info("build_outin_review_trend: no OutIn data in DWH.")
         return 0
 
+    df = _apply_text_cleaning(df)
     df = df.sort_values("observed_at")
 
     month_end = (
@@ -662,6 +754,7 @@ def build_coffee_market_share(connection: pymysql.Connection) -> int:
         logger.info("build_coffee_market_share: no coffee data in DWH.")
         return 0
 
+    df = _apply_text_cleaning(df)
     df = df.sort_values("observed_at")
     df["brand"] = df["brand"].fillna("Unknown")
 

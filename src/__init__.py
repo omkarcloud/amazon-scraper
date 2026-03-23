@@ -4,6 +4,7 @@ from .database import create_db_connection, close_tunnel
 from .etl import (
     ensure_all_tables,
     extract_to_dwh,
+    clean_dwh_data,
     build_outin_daily_sales,
     build_outin_monthly_sales,
     build_outin_review_trend,
