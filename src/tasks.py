@@ -52,6 +52,7 @@ from .database import (
 )
 from .etl import (
     build_coffee_market_share,
+    build_outin_daily_sales,
     build_outin_monthly_sales,
     build_outin_review_trend,
     extract_to_dwh,
@@ -134,6 +135,18 @@ def task_extract_to_dwh(**kwargs: Any) -> int:
     try:
         count = extract_to_dwh(connection)
         logger.info("task_extract_to_dwh completed: %d rows.", count)
+        return count
+    finally:
+        connection.close()
+        close_tunnel()
+
+
+def task_build_outin_daily_sales(**kwargs: Any) -> int:
+    """Airflow task: aggregate DWH -> DMT (OutIn daily sales)."""
+    connection = create_db_connection()
+    try:
+        count = build_outin_daily_sales(connection)
+        logger.info("task_build_outin_daily_sales completed: %d rows.", count)
         return count
     finally:
         connection.close()

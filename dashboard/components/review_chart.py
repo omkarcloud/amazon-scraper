@@ -12,30 +12,50 @@ def render_review_chart(df: pd.DataFrame) -> None:
         st.info("暂无评价数据")
         return
 
+    valid_asins = df.dropna(subset=["month_end_num_ratings"])
+    valid_asins = valid_asins[valid_asins["month_end_num_ratings"] > 0]
+    unique_asins = valid_asins["asin"].unique().tolist()
+
+    if not unique_asins:
+        st.info("所选范围内无有效评价数据")
+        return
+
     selected_asin = st.selectbox(
         "选择产品",
-        options=["全部"] + df["asin"].unique().tolist(),
+        options=["全部"] + unique_asins,
         format_func=lambda x: (
             "全部产品"
             if x == "全部"
-            else f"{x} - {df[df['asin']==x]['product_title'].iloc[0][:40]}..."
-            if len(df[df["asin"] == x]["product_title"].iloc[0] or "") > 40
-            else f"{x} - {df[df['asin']==x]['product_title'].iloc[0]}"
+            else _asin_label(df, x)
         ),
         key="review_asin",
     )
 
     if selected_asin == "全部":
-        plot_df = (
-            df.groupby("observed_month")
-            .agg(
-                new_ratings_this_month=("new_ratings_this_month", "sum"),
-                month_end_star_rating=("month_end_star_rating", "mean"),
-                month_end_num_ratings=("month_end_num_ratings", "sum"),
-            )
+        ratings_data = df.dropna(subset=["new_ratings_this_month"])
+        star_data = df.dropna(subset=["month_end_star_rating"])
+
+        ratings_agg = (
+            ratings_data.groupby("observed_month")
+            .agg(new_ratings_this_month=("new_ratings_this_month", "sum"))
             .reset_index()
-            .sort_values("observed_month")
         )
+        star_agg = (
+            star_data.groupby("observed_month")
+            .agg(month_end_star_rating=("month_end_star_rating", "mean"))
+            .reset_index()
+        )
+        plot_df = ratings_agg.merge(star_agg, on="observed_month", how="outer")
+
+        cum_agg = (
+            df.dropna(subset=["month_end_num_ratings"])
+            .groupby("observed_month")
+            .agg(month_end_num_ratings=("month_end_num_ratings", "sum"))
+            .reset_index()
+        )
+        plot_df = plot_df.merge(cum_agg, on="observed_month", how="outer")
+        plot_df = plot_df.sort_values("observed_month")
+
         title = "OutIn 全部产品 - 评价趋势"
     else:
         plot_df = (
@@ -86,8 +106,11 @@ def render_review_chart(df: pd.DataFrame) -> None:
     with st.expander("查看累计评价数趋势"):
         cum_fig = go.Figure()
         if selected_asin == "全部":
-            for asin in df["asin"].unique():
-                asin_df = df[df["asin"] == asin].sort_values("observed_month")
+            for asin in unique_asins:
+                asin_df = df[df["asin"] == asin].dropna(subset=["month_end_num_ratings"])
+                if asin_df.empty:
+                    continue
+                asin_df = asin_df.sort_values("observed_month")
                 cum_fig.add_trace(go.Scatter(
                     x=asin_df["observed_month"],
                     y=asin_df["month_end_num_ratings"],
@@ -108,3 +131,10 @@ def render_review_chart(df: pd.DataFrame) -> None:
             hovermode="x unified",
         )
         st.plotly_chart(cum_fig, use_container_width=True)
+
+
+def _asin_label(df: pd.DataFrame, asin: str) -> str:
+    title = df.loc[df["asin"] == asin, "product_title"].iloc[0] or ""
+    if len(title) > 40:
+        title = title[:40] + "..."
+    return f"{asin} - {title}"

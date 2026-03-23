@@ -4,37 +4,77 @@ Query functions for the Streamlit dashboard.
 All queries read from the gurysk_app layer (views over gurysk_dmt tables).
 """
 
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import pymysql
 
 
-def get_filter_options(connection: pymysql.Connection) -> Dict[str, List[str]]:
-    """Return available filter values for the dashboard sidebar."""
+def get_filter_options(connection: pymysql.Connection) -> Dict[str, Any]:
+    """Return available filter values with marketplace-ASIN cascading map."""
     months_df = pd.read_sql(
         "SELECT DISTINCT observed_month FROM gurysk_app.v_outin_sales_dashboard "
         "ORDER BY observed_month",
         connection,
     )
-    marketplaces_df = pd.read_sql(
-        "SELECT DISTINCT marketplace FROM gurysk_app.v_outin_sales_dashboard "
-        "ORDER BY marketplace",
+    dates_df = pd.read_sql(
+        "SELECT DISTINCT observed_date FROM gurysk_app.v_outin_daily_sales_dashboard "
+        "ORDER BY observed_date",
         connection,
     )
-    asins_df = pd.read_sql(
-        "SELECT DISTINCT asin, product_title FROM gurysk_app.v_outin_sales_dashboard "
-        "ORDER BY asin",
+    asin_df = pd.read_sql(
+        "SELECT DISTINCT marketplace, asin, product_title "
+        "FROM gurysk_app.v_outin_daily_sales_dashboard "
+        "WHERE sales_volume_num IS NOT NULL AND sales_volume_num > 0 "
+        "ORDER BY marketplace, asin",
         connection,
     )
+
+    marketplace_asin_map: Dict[str, List[Dict[str, str]]] = defaultdict(list)
+    for _, r in asin_df.iterrows():
+        marketplace_asin_map[r["marketplace"]].append(
+            {"asin": r["asin"], "title": r["product_title"]}
+        )
+
     return {
         "months": months_df["observed_month"].tolist(),
-        "marketplaces": marketplaces_df["marketplace"].tolist(),
-        "asins": [
-            {"asin": r["asin"], "title": r["product_title"]}
-            for _, r in asins_df.iterrows()
-        ],
+        "dates": [d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)
+                  for d in dates_df["observed_date"].tolist()],
+        "marketplace_asin_map": dict(marketplace_asin_map),
     }
+
+
+def get_outin_daily_sales(
+    connection: pymysql.Connection,
+    marketplace: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    asins: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """Fetch OutIn daily sales data (only rows with sales > 0)."""
+    sql = (
+        "SELECT * FROM gurysk_app.v_outin_daily_sales_dashboard "
+        "WHERE sales_volume_num IS NOT NULL AND sales_volume_num > 0"
+    )
+    params: List[Any] = []
+
+    if marketplace:
+        sql += " AND marketplace = %s"
+        params.append(marketplace)
+    if start_date:
+        sql += " AND observed_date >= %s"
+        params.append(start_date)
+    if end_date:
+        sql += " AND observed_date <= %s"
+        params.append(end_date)
+    if asins:
+        placeholders = ", ".join(["%s"] * len(asins))
+        sql += f" AND asin IN ({placeholders})"
+        params.extend(asins)
+
+    sql += " ORDER BY observed_date, asin"
+    return pd.read_sql(sql, connection, params=params or None)
 
 
 def get_outin_monthly_sales(

@@ -109,6 +109,26 @@ CREATE TABLE IF NOT EXISTS gurysk_dmt.dmt_outin_review_trend (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
+DMT_OUTIN_DAILY_SALES_DDL = """
+CREATE TABLE IF NOT EXISTS gurysk_dmt.dmt_outin_daily_sales (
+    id                      BIGINT AUTO_INCREMENT PRIMARY KEY,
+    observed_date           DATE NOT NULL,
+    marketplace             VARCHAR(8) NOT NULL,
+    asin                    VARCHAR(32) NOT NULL,
+    product_title           VARCHAR(1024),
+    price                   DECIMAL(10,2),
+    sales_volume_num        INT,
+    num_ratings             INT,
+    star_rating             DECIMAL(3,2),
+    sales_volume_dod_change INT COMMENT '日销量环比变化 (当日 - 前一日)',
+    num_ratings_dod_change  INT COMMENT '日评价数环比变化',
+    observation_count       INT,
+    etl_loaded_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_date_asin (observed_date, asin, marketplace),
+    INDEX idx_asin_date (asin, observed_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+"""
+
 DMT_COFFEE_MARKET_SHARE_DDL = """
 CREATE TABLE IF NOT EXISTS gurysk_dmt.dmt_coffee_market_share (
     id              BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -138,6 +158,10 @@ APP_VIEWS_DDL = [
     SELECT * FROM gurysk_dmt.dmt_outin_monthly_sales;
     """,
     """
+    CREATE OR REPLACE VIEW gurysk_app.v_outin_daily_sales_dashboard AS
+    SELECT * FROM gurysk_dmt.dmt_outin_daily_sales;
+    """,
+    """
     CREATE OR REPLACE VIEW gurysk_app.v_outin_review_dashboard AS
     SELECT * FROM gurysk_dmt.dmt_outin_review_trend;
     """,
@@ -154,6 +178,7 @@ def ensure_all_tables(connection: pymysql.Connection) -> None:
         for ddl in [
             DWH_SNAPSHOT_DDL,
             DMT_OUTIN_MONTHLY_SALES_DDL,
+            DMT_OUTIN_DAILY_SALES_DDL,
             DMT_OUTIN_REVIEW_TREND_DDL,
             DMT_COFFEE_MARKET_SHARE_DDL,
         ]:
@@ -393,13 +418,76 @@ def extract_to_dwh(
 
 
 # ---------------------------------------------------------------------------
-# ETL Step 2a: DWH -> DMT  (OutIn monthly sales)
+# ETL Step 2a-daily: DWH -> DMT  (OutIn daily sales)
 # ---------------------------------------------------------------------------
 
 _OUTIN_FILTER = (
     "LOWER(COALESCE(brand,'')) LIKE '%%outin%%' "
     "OR LOWER(COALESCE(product_title,'')) LIKE '%%outin%%'"
 )
+
+
+def build_outin_daily_sales(connection: pymysql.Connection) -> int:
+    """Aggregate DWH snapshots into dmt_outin_daily_sales (one row per asin/date)."""
+    df = pd.read_sql(
+        f"SELECT * FROM gurysk_dwh.dwh_amazon_product_snapshot WHERE {_OUTIN_FILTER}",
+        connection,
+    )
+    if df.empty:
+        logger.info("build_outin_daily_sales: no OutIn data in DWH.")
+        return 0
+
+    df = df.sort_values("observed_at")
+
+    day_end = (
+        df.groupby(["asin", "observed_date", "marketplace"])
+        .last()
+        .reset_index()
+    )
+
+    agg = (
+        df.groupby(["asin", "observed_date", "marketplace"])
+        .agg(observation_count=("id", "count"))
+        .reset_index()
+    )
+
+    result = day_end[
+        ["asin", "observed_date", "marketplace", "product_title",
+         "price", "sales_volume_num", "num_ratings", "star_rating"]
+    ].merge(agg, on=["asin", "observed_date", "marketplace"])
+
+    result = result.sort_values(["asin", "marketplace", "observed_date"])
+
+    result["sales_volume_dod_change"] = (
+        result.groupby(["asin", "marketplace"])["sales_volume_num"].diff()
+    )
+    result["num_ratings_dod_change"] = (
+        result.groupby(["asin", "marketplace"])["num_ratings"].diff()
+    )
+
+    result = result.dropna(subset=["sales_volume_num"])
+    result = result[result["sales_volume_num"] > 0]
+
+    _upsert_dmt_rows(
+        connection,
+        table="gurysk_dmt.dmt_outin_daily_sales",
+        columns=[
+            "observed_date", "marketplace", "asin", "product_title",
+            "price", "sales_volume_num", "num_ratings", "star_rating",
+            "sales_volume_dod_change", "num_ratings_dod_change",
+            "observation_count",
+        ],
+        df=result,
+    )
+
+    count = len(result)
+    logger.info("build_outin_daily_sales: %d rows upserted.", count)
+    return count
+
+
+# ---------------------------------------------------------------------------
+# ETL Step 2a: DWH -> DMT  (OutIn monthly sales)
+# ---------------------------------------------------------------------------
 
 
 def build_outin_monthly_sales(connection: pymysql.Connection) -> int:
@@ -421,16 +509,22 @@ def build_outin_monthly_sales(connection: pymysql.Connection) -> int:
         .reset_index()
     )
 
+    valid_prices = df.dropna(subset=["price"])
     agg = (
         df.groupby(["asin", "observed_month", "marketplace"])
         .agg(
-            avg_price=("price", "mean"),
             observation_count=("id", "count"),
             first_observed_at=("observed_at", "min"),
             last_observed_at=("observed_at", "max"),
         )
         .reset_index()
     )
+    avg_price_agg = (
+        valid_prices.groupby(["asin", "observed_month", "marketplace"])
+        .agg(avg_price=("price", "mean"))
+        .reset_index()
+    )
+    agg = agg.merge(avg_price_agg, on=["asin", "observed_month", "marketplace"], how="left")
 
     result = month_end[
         ["asin", "observed_month", "marketplace", "product_title",
@@ -498,17 +592,25 @@ def build_outin_review_trend(connection: pymysql.Connection) -> int:
         "num_reviews": "month_end_num_reviews",
     })
 
+    valid_ratings = df.dropna(subset=["star_rating"])
     agg = (
         df.groupby(["asin", "observed_month", "marketplace"])
         .agg(
-            avg_star_rating=("star_rating", "mean"),
-            min_star_rating=("star_rating", "min"),
-            max_star_rating=("star_rating", "max"),
             observation_count=("id", "count"),
             last_observed_at=("observed_at", "max"),
         )
         .reset_index()
     )
+    rating_agg = (
+        valid_ratings.groupby(["asin", "observed_month", "marketplace"])
+        .agg(
+            avg_star_rating=("star_rating", "mean"),
+            min_star_rating=("star_rating", "min"),
+            max_star_rating=("star_rating", "max"),
+        )
+        .reset_index()
+    )
+    agg = agg.merge(rating_agg, on=["asin", "observed_month", "marketplace"], how="left")
 
     result = month_end.merge(agg, on=["asin", "observed_month", "marketplace"])
     result = result.sort_values(["asin", "marketplace", "observed_month"])
@@ -645,9 +747,10 @@ def _upsert_dmt_rows(
 
     placeholders = ", ".join(["%s"] * len(columns))
     col_list = ", ".join(columns)
+    uk_fields = {"observed_month", "observed_date", "marketplace", "asin", "brand"}
     update_clause = ", ".join(
         f"{c} = VALUES({c})" for c in columns
-        if c not in ("observed_month", "marketplace", "asin", "brand")
+        if c not in uk_fields
     )
     update_clause += ", etl_loaded_at = CURRENT_TIMESTAMP"
 
@@ -662,9 +765,13 @@ def _upsert_dmt_rows(
         vals = []
         for c in columns:
             v = row.get(c)
-            if pd.isna(v) if isinstance(v, float) else v is pd.NaT:
-                vals.append(None)
-            elif isinstance(v, pd.Timestamp):
+            try:
+                if v is None or v is pd.NaT or pd.isna(v):
+                    vals.append(None)
+                    continue
+            except (ValueError, TypeError):
+                pass
+            if isinstance(v, pd.Timestamp):
                 vals.append(v.to_pydatetime())
             else:
                 vals.append(v)
