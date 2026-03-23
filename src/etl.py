@@ -198,6 +198,11 @@ _MARKETPLACE_PREFIX_RE = re.compile(
     r"【[^】]*(?:限定|限り|セール|特選)[^】]*】\s*",
 )
 
+_CURLY_QUOTE_MAP = str.maketrans({
+    "\u2018": "'", "\u2019": "'",  # ' '
+    "\u201C": '"', "\u201D": '"',  # " "
+})
+
 _BRAND_ALIASES: Dict[str, str] = {
     "de'longhi": "De'Longhi",
     "delonghi": "De'Longhi",
@@ -207,12 +212,17 @@ _BRAND_ALIASES: Dict[str, str] = {
     "black+decker": "BLACK+DECKER",
 }
 
+_BRAND_PREFIX_RE = re.compile(
+    r"^(de'?longhi|delonghi)", re.IGNORECASE,
+)
+
 
 def clean_text(text: Optional[str]) -> Optional[str]:
     """Decode HTML entities and strip marketplace-specific noise from text."""
     if not text:
         return text
     text = html.unescape(str(text))
+    text = text.translate(_CURLY_QUOTE_MAP)
     text = _MARKETPLACE_PREFIX_RE.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text if text else None
@@ -223,10 +233,13 @@ def clean_brand(brand: Optional[str]) -> Optional[str]:
     if not brand:
         return brand
     brand = html.unescape(str(brand)).strip()
+    brand = brand.translate(_CURLY_QUOTE_MAP)
     brand = _MARKETPLACE_PREFIX_RE.sub("", brand).strip()
     lookup = brand.lower()
     if lookup in _BRAND_ALIASES:
         return _BRAND_ALIASES[lookup]
+    if _BRAND_PREFIX_RE.match(lookup):
+        return "De'Longhi"
     return brand if brand else None
 
 
@@ -486,9 +499,15 @@ def clean_dwh_data(connection: pymysql.Connection) -> int:
             "WHERE product_title LIKE '%%&#%%' "
             "   OR product_title LIKE '%%&amp;%%' "
             "   OR product_title LIKE '%%【%%' "
+            "   OR product_title LIKE '%%\u2019%%' "
+            "   OR product_title LIKE '%%\u2018%%' "
             "   OR brand LIKE '%%&#%%' "
             "   OR brand LIKE '%%&amp;%%' "
-            "   OR brand LIKE '%%【%%'"
+            "   OR brand LIKE '%%【%%' "
+            "   OR brand LIKE '%%\u2019%%' "
+            "   OR brand LIKE '%%\u2018%%' "
+            "   OR brand LIKE '%%DELONGHI%%' "
+            "   OR brand LIKE '%%DeLonghi%%'"
         )
         dirty_rows = cur.fetchall()
 
