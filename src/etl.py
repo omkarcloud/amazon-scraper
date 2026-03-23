@@ -507,7 +507,9 @@ def clean_dwh_data(connection: pymysql.Connection) -> int:
             "   OR brand LIKE '%%\u2019%%' "
             "   OR brand LIKE '%%\u2018%%' "
             "   OR brand LIKE '%%DELONGHI%%' "
-            "   OR brand LIKE '%%DeLonghi%%'"
+            "   OR brand LIKE '%%DeLonghi%%' "
+            "   OR brand LIKE '%%De%%Longhi%%' "
+            "   OR brand LIKE '%%デロンギ%%'"
         )
         dirty_rows = cur.fetchall()
 
