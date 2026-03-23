@@ -77,7 +77,13 @@ class RapidAmazonDataClient:
                 {"asin": ",".join(asin_batch), "country": country, **filters},
             )
 
-            if isinstance(payload, list):
+            if isinstance(payload, dict) and "data" in payload:
+                data = payload["data"]
+                if isinstance(data, list):
+                    all_results.extend(data)
+                elif isinstance(data, dict):
+                    all_results.append(data)
+            elif isinstance(payload, list):
                 all_results.extend(payload)
             elif isinstance(payload, dict) and isinstance(payload.get("products"), list):
                 all_results.extend(payload["products"])
