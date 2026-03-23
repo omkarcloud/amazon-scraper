@@ -70,13 +70,26 @@ def render_sales_chart(df: pd.DataFrame, granularity: str = "monthly") -> None:
     x_title = "日期" if is_daily else "月份"
     title_prefix = "OutIn 产品日销量趋势" if is_daily else "OutIn 产品月销量趋势"
 
+    n_asins = filtered["asin"].nunique()
+    legend_rows = (n_asins + 1) // 2
+    bottom_margin = max(100, legend_rows * 28 + 60)
+
     fig.update_layout(
         title=title_prefix,
         xaxis_title=x_title,
         yaxis_title=y_title,
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.3),
-        margin=dict(l=60, r=30, t=50, b=80),
+        height=500 + bottom_margin,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="left",
+            x=0,
+            font=dict(size=11),
+            tracegroupgap=2,
+        ),
+        margin=dict(l=60, r=30, t=50, b=bottom_margin),
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -97,12 +110,25 @@ def render_sales_chart(df: pd.DataFrame, granularity: str = "monthly") -> None:
                 mode="lines+markers",
                 name=f"{asin} - {label}",
             ))
+        price_n = filtered["asin"].nunique()
+        price_legend_rows = (price_n + 1) // 2
+        price_bm = max(100, price_legend_rows * 28 + 60)
+
         price_fig.update_layout(
             title="OutIn 产品价格趋势",
             xaxis_title=x_title,
             yaxis_title="价格",
             hovermode="x unified",
-            legend=dict(orientation="h", yanchor="bottom", y=-0.3),
-            margin=dict(l=60, r=30, t=50, b=80),
+            height=500 + price_bm,
+            legend=dict(
+                orientation="h",
+                yanchor="top",
+                y=-0.15,
+                xanchor="left",
+                x=0,
+                font=dict(size=11),
+                tracegroupgap=2,
+            ),
+            margin=dict(l=60, r=30, t=50, b=price_bm),
         )
         st.plotly_chart(price_fig, use_container_width=True)

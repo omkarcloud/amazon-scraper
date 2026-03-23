@@ -94,8 +94,15 @@ def render_review_chart(df: pd.DataFrame) -> None:
     fig.update_layout(
         title=title,
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=-0.25),
-        margin=dict(l=60, r=60, t=50, b=80),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.15,
+            xanchor="left",
+            x=0,
+            font=dict(size=11),
+        ),
+        margin=dict(l=60, r=60, t=50, b=120),
     )
     fig.update_yaxes(title_text="月新增评价数", secondary_y=False)
     fig.update_yaxes(title_text="评分", range=[0, 5.5], secondary_y=True)
