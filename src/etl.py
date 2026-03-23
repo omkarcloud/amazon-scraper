@@ -213,7 +213,7 @@ _BRAND_ALIASES: Dict[str, str] = {
 }
 
 _BRAND_PREFIX_RE = re.compile(
-    r"^(de'?longhi|delonghi)", re.IGNORECASE,
+    r"^(de'?longhi|delonghi|デロンギ)", re.IGNORECASE,
 )
 
 
