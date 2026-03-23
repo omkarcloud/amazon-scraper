@@ -51,12 +51,15 @@ def main() -> None:
         st.header("筛选条件")
 
         months = options.get("months", [])
-        if months:
+        if len(months) > 1:
             start_month, end_month = st.select_slider(
                 "时间范围",
                 options=months,
                 value=(months[0], months[-1]),
             )
+        elif len(months) == 1:
+            st.info(f"当前仅有 **{months[0]}** 一个月份的数据")
+            start_month, end_month = months[0], months[0]
         else:
             start_month, end_month = None, None
 
