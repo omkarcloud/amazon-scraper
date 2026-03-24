@@ -39,14 +39,26 @@ def _get_connection():
     return create_db_connection()
 
 
-def main() -> None:
+def _get_healthy_connection():
+    """Return a live DB connection, reconnecting if the cached one is dead."""
     conn = _get_connection()
+    try:
+        conn.ping(reconnect=True)
+        return conn
+    except Exception:
+        _get_connection.clear()
+        return _get_connection()
+
+
+def main() -> None:
+    conn = _get_healthy_connection()
 
     try:
         options = get_filter_options(conn)
     except Exception as e:
+        _get_connection.clear()
         st.error(f"数据库连接或查询失败: {e}")
-        st.info("请确认数据库已连接，且 ETL 已运行过至少一次。")
+        st.info("请确认数据库已连接，且 ETL 已运行过至少一次。点击右上角 Rerun 重试。")
         return
 
     # ---- Sidebar ----
