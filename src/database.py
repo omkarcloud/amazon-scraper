@@ -1,4 +1,7 @@
 import json
+import socket
+import subprocess
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 import pymysql
@@ -8,6 +11,8 @@ from .config import get_database_settings, get_ssh_tunnel_settings
 
 
 DEFAULT_RAW_PRODUCTS_TABLE = "amazon_product_raw"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_START_TUNNEL_SCRIPT = _PROJECT_ROOT / "scripts" / "start-rds-tunnel.sh"
 
 _tunnel: Optional[SSHTunnelForwarder] = None
 
@@ -36,7 +41,16 @@ def create_db_connection(
     if should_tunnel:
         return _connect_via_ssh_tunnel(resolved, ssh)
 
-    return pymysql.connect(**resolved)
+    _ensure_local_tunnel_if_needed(resolved)
+    try:
+        return pymysql.connect(**resolved)
+    except pymysql.err.OperationalError as exc:
+        # If the local SSH tunnel disappeared between checks, restart it once
+        # and retry the direct local connection.
+        if _is_local_tunnel_target(resolved):
+            _ensure_local_tunnel_if_needed(resolved, force_restart=True)
+            return pymysql.connect(**resolved)
+        raise exc
 
 
 def _connect_via_ssh_tunnel(
@@ -69,6 +83,45 @@ def close_tunnel() -> None:
     if _tunnel is not None and _tunnel.is_active:
         _tunnel.stop()
         _tunnel = None
+
+
+def _is_local_tunnel_target(db_settings: Dict[str, Any]) -> bool:
+    host = str(db_settings.get("host", "")).strip().lower()
+    port = int(db_settings.get("port", 0) or 0)
+    return host in {"127.0.0.1", "localhost"} and port == 3307
+
+
+def _is_port_listening(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _ensure_local_tunnel_if_needed(
+    db_settings: Dict[str, Any],
+    force_restart: bool = False,
+) -> None:
+    if not _is_local_tunnel_target(db_settings):
+        return
+
+    host = str(db_settings["host"])
+    port = int(db_settings["port"])
+    if not force_restart and _is_port_listening(host, port):
+        return
+
+    if not _START_TUNNEL_SCRIPT.exists():
+        return
+
+    subprocess.run(
+        ["bash", str(_START_TUNNEL_SCRIPT)],
+        cwd=str(_PROJECT_ROOT),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
 
 
 def ensure_raw_products_table(

@@ -1,6 +1,10 @@
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 DEFAULT_RAPIDAPI_HOST = "real-time-amazon-data.p.rapidapi.com"
 DEFAULT_RAPIDAPI_BASE_URL = f"https://{DEFAULT_RAPIDAPI_HOST}"
@@ -68,3 +72,24 @@ def get_rds_conn() -> Dict[str, Any]:
         "password": db["password"],
         "database": db["database"],
     }
+
+
+# Module-level config dicts consumed by dashboard/pages/config.py and others.
+_db = get_database_settings()
+_ssh = get_ssh_tunnel_settings()
+
+DB_CONFIG: Dict[str, Any] = {
+    "host": _db["host"],
+    "port": _db["port"],
+    "user": _db["user"],
+    "password": _db["password"],
+    "database": _db["database"],
+}
+
+SSH_CONFIG: Dict[str, Any] = {
+    "enabled": bool(_ssh["ssh_host"]),
+    "host": _ssh["ssh_host"],
+    "port": _ssh["ssh_port"],
+    "user": _ssh["ssh_username"],
+    "key_file": _ssh["ssh_pkey"],
+}

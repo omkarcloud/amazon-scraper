@@ -5,3 +5,7 @@ cryptography
 pandas
 streamlit
 plotly
+scipy
+scikit-learn
+numpy
+python-dotenv

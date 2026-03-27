@@ -76,18 +76,71 @@ class RapidAmazonDataClient:
                 "/product-details",
                 {"asin": ",".join(asin_batch), "country": country, **filters},
             )
-
-            if isinstance(payload, dict) and "data" in payload:
-                data = payload["data"]
-                if isinstance(data, list):
-                    all_results.extend(data)
-                elif isinstance(data, dict):
-                    all_results.append(data)
-            elif isinstance(payload, list):
-                all_results.extend(payload)
-            elif isinstance(payload, dict) and isinstance(payload.get("products"), list):
-                all_results.extend(payload["products"])
-            else:
-                all_results.append(payload)
+            all_results.extend(self._normalize_product_list(payload))
 
         return all_results
+
+    def get_products_by_category(
+        self,
+        category_id: str,
+        country: str = "US",
+        page: int = 1,
+        **filters: Any,
+    ) -> Dict[str, Any]:
+        params = {"category_id": category_id, "country": country, "page": page, **filters}
+        return self._request("/products-by-category", params)
+
+    def get_best_sellers(
+        self,
+        category: str,
+        country: str = "US",
+        page: int = 1,
+        type_: str = "BEST_SELLERS",
+        **filters: Any,
+    ) -> Dict[str, Any]:
+        params = {"category": category, "country": country, "page": page, "type": type_, **filters}
+        return self._request("/best-sellers", params)
+
+    def get_top_product_reviews(
+        self,
+        asin: str,
+        country: str = "US",
+        **filters: Any,
+    ) -> Dict[str, Any]:
+        params = {"asin": asin, "country": country, **filters}
+        return self._request("/top-product-reviews", params)
+
+    def get_product_offers(
+        self,
+        asin: Union[str, Sequence[str]],
+        country: str = "US",
+        **filters: Any,
+    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        if isinstance(asin, str):
+            return self._request("/product-offers", {"asin": asin, "country": country, **filters})
+
+        all_results: List[Dict[str, Any]] = []
+        for asin_batch in _chunked(list(asin), 10):
+            payload = self._request(
+                "/product-offers",
+                {"asin": ",".join(asin_batch), "country": country, **filters},
+            )
+            all_results.extend(self._normalize_product_list(payload))
+        return all_results
+
+    @staticmethod
+    def _normalize_product_list(payload: Any) -> List[Dict[str, Any]]:
+        """Extract a flat list of product dicts from various API response shapes."""
+        if isinstance(payload, dict) and "data" in payload:
+            data = payload["data"]
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                return [data]
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, dict) and isinstance(payload.get("products"), list):
+            return payload["products"]
+        if isinstance(payload, dict):
+            return [payload]
+        return []
