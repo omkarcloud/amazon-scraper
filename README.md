@@ -2,6 +2,173 @@
 
 # Amazon Scraper API
 
+## 项目说明
+
+这个仓库目前已经不只是一个通用的 Amazon 抓取示例，而是一套围绕品牌分析场景扩展过的采集 + 数仓 + 看板系统。目标是基于 RapidAPI 的 Amazon 数据，持续估算品牌商品日销量，监控价格折扣、评论与评分变化，并观察品牌在官方类目或自定义细分市场中的份额趋势。
+
+当前已经落地的核心能力：
+
+- 统一品牌分析首页：`dashboard/app.py`
+- 采集配置控制台：`dashboard/pages/config.py`
+- 配置驱动采集：`gurysk_app.app_scraper_config`
+- 官方类目扫描：`category_scan`
+- 自定义细分市场扫描：`segment_scan`
+- 日销量估算与趋势分析：`src/sales_estimator.py`
+- 类目份额与细分市场份额估算：`src/etl.py`
+
+## 当前系统架构
+
+系统按 `SRC -> DWH -> DMT -> APP` 分层：
+
+- `gurysk_src`
+  - 原始采集落地层，核心原始表为 `amazon_product_raw`
+- `gurysk_dwh`
+  - 清洗后的商品、评论、报价、SPU/SKU 关系等明细快照
+  - 例如：`dwh_amazon_product_snapshot`、`dwh_amazon_review_snapshot`、`dwh_amazon_offer_snapshot`
+- `gurysk_dmt`
+  - 面向分析的宽表和结果表
+  - 例如：`dmt_product_daily_metrics`、`dmt_daily_sales_estimate`、`dmt_brand_market_share`
+  - 自定义细分市场相关：`dmt_segment_product_daily_metrics`、`dmt_segment_market_share`、`dmt_segment_estimation_stats`
+- `gurysk_app`
+  - 面向前端查询的视图层
+  - 例如：`v_product_daily_metrics`、`v_daily_sales_estimate`、`v_brand_market_share`
+  - 以及 segment 相关视图：`v_segment_product_daily_metrics`、`v_segment_market_share`、`v_segment_estimation_stats`
+
+核心链路如下：
+
+1. 在配置页新增、启停、删除采集项
+2. 页面操作会直接修改 `gurysk_app.app_scraper_config`
+3. `main.py` 按 `schedule_profile` 读取启用中的配置项
+4. 采集结果先写入 `gurysk_src.amazon_product_raw`
+5. ETL 将原始数据加工到 `gurysk_dwh` / `gurysk_dmt`
+6. Streamlit 首页从 `gurysk_app` 视图读取结果并展示
+
+## 配置页如何驱动采集
+
+配置管理页地址：
+
+- `http://localhost:8501/config`
+
+这个页面不是单纯的 UI，它直接对应调度配置表 `gurysk_app.app_scraper_config`。也就是说，你在页面上的这些动作会影响后续采集：
+
+- 新增配置：插入一行新的采集任务
+- 停用 / 启用配置：切换 `is_active`
+- 删除配置：从调度表删除该任务
+
+调度端会读取 `is_active = 1` 且命中当前 `schedule_profile` 的任务，因此这张表本身就是采集任务的控制面板。当前支持的主要 `config_type` 包括：
+
+- `product_query`：按关键词搜商品
+- `category_query`：按品类关键词做宽口径搜索
+- `target_asin`：跟踪重点 ASIN 详情
+- `brand_search`：按品牌 + 查询词抓品牌结果
+- `category_scan`：按 Amazon 官方类目 ID 扫描
+- `segment_scan`：按业务关键词定义自定义细分市场
+- `bestseller_scan`：抓 Best Seller 榜单
+- `review_scan`：抓 Top Reviews
+- `offer_scan`：抓报价 / 卖家报价信息
+- `setting`：全局参数，例如 `request_delay`
+
+初始化配置表与示例数据：
+
+```bash
+python scripts/create_config_table.py
+```
+
+## `category_scan` 和 `segment_scan` 的区别
+
+`category_scan` 用于 Amazon 官方类目。它依赖明确的 `category_id`，例如咖啡机类目，可用于稳定地统计类目内品牌份额。
+
+`segment_scan` 用于业务自定义市场，比如 `portable coffee machine`。这类市场往往没有稳定的 Amazon `category_id`，而是通过关键词定义一个动态样本池。系统会在采集时把 `segment_name` / `segment_keyword` 写入元数据，在 ETL 阶段构建专门的 segment 指标表，并使用抽样估计、bootstrap 区间和 empirical Bayes 收缩来估算市场总量与品牌份额。
+
+因此，如果 OutIn 需要归入“便携咖啡机”这类自定义市场，应优先使用 `segment_scan`，而不是硬塞进某个不准确的官方类目。
+
+## 看板说明
+
+首页地址：
+
+- `http://localhost:8501`
+
+当前首页已经整合为统一的“通用品牌分析”视图，不再把 OutIn 单独拆成一个遗留模块。首页支持两种市场范围：
+
+- 官方类目
+- 自定义细分市场
+
+可以按品牌、市场范围、日期、ASIN 等维度筛选，并查看：
+
+- 商品日级指标
+- 日销量估算图表
+- 价格与折扣率趋势
+- 评论 / 评分变化
+- 品牌市场份额趋势
+- 自定义细分市场的样本量、覆盖率、稳定性和 bootstrap 区间
+
+## 本地开发与启动
+
+1. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+2. 准备环境变量
+
+```bash
+cp .env.example .env
+```
+
+本地开发通常使用本地端口转发：
+
+- `DB_HOST=127.0.0.1`
+- `DB_PORT=3307`
+
+服务器部署通常直连 RDS：
+
+- `DB_HOST=<rds endpoint>`
+- `DB_PORT=3306`
+
+3. 启动本地 SSH 隧道
+
+```bash
+bash scripts/start-rds-tunnel.sh
+```
+
+`src/database.py` 会在本地连接 `127.0.0.1:3307` 失败时尝试自动重新拉起隧道，因此比纯手动连接更稳一些。
+
+4. 初始化配置表
+
+```bash
+python scripts/create_config_table.py
+```
+
+5. 启动看板
+
+```bash
+streamlit run dashboard/app.py
+```
+
+6. 执行一次采集
+
+```bash
+STORE_TO_DB=true SCRAPE_PROFILE=daily python main.py
+```
+
+说明：
+
+- `main.py` 会优先从 `app_scraper_config` 读取任务
+- 若数据库不可用，才会回退到环境变量配置
+- 启动时会打印本次任务的预估 API 调用次数，帮助控制 RapidAPI 月度配额
+
+## API 配额控制策略
+
+RapidAPI 月请求数有限，因此当前实现里已经做了几件事来压缩调用量：
+
+- `target_asin` 与 `offer_scan` 尽量按 10 个 ASIN 批量请求
+- `main.py` 在执行前估算本轮 API 请求量
+- `app_scraper_config` 可按 `daily / weekly / both` 控制调度频率
+- `segment_scan` 与 `category_scan` 均支持限制抓取页数，避免无上限扩张
+
+如果你后续要扩展更多品牌或市场，建议优先通过配置页增配，而不是写死到代码中。
+
 Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 1,000 free requests/month.
 
 ## Key Features
