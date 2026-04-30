@@ -2,12 +2,12 @@
 
 # Amazon Scraper API
 
-Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 1,000 free requests/month.
+Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 100 free requests/month.
 
 ## Key Features
 
 - Search Amazon products, get product details, browse by category, and fetch top reviews — all via 1 API.
-- 1,000 free queries per month. No credit card required.
+- 100 free queries per month. No credit card required.
 
 Here's a sample response for a **product search results page**:
 ```json
@@ -31,7 +31,7 @@ Here's a sample response for a **product search results page**:
 
 Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key.
 
-It takes just 2 minutes to sign up. You get 1,000 free requests every month for detailed Amazon data than enough for most users to get their job done without paying a dime.
+It takes just 2 minutes to sign up. You get 100 free requests every month for detailed Amazon data.
 
 This is a well built product, and your search for the best Amazon Scraper API ends right here. 
 
@@ -735,9 +735,9 @@ Use Search when you know what you're looking for. Use Category when you want to 
 
 | Plan | Price | Requests/Month |
 |------|-------|----------------|
-| Free | $0 | 1,000 |
+| Free | $0 | 100 |
 | Starter | $16 | 15,000 |
-| Growth | $48 | 75,000 |
+| Grow | $48 | 75,000 |
 | Scale | $148 | 300,000 |
 
 ## Questions? We have answers.
