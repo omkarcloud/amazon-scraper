@@ -736,7 +736,6 @@ Use Search when you know what you're looking for. Use Category when you want to 
 | Plan | Price | Requests/Month |
 |------|-------|----------------|
 | Free | $0 | 100 |
-| Starter | $16 | 15,000 |
 | Grow | $48 | 75,000 |
 | Scale | $148 | 300,000 |
 
