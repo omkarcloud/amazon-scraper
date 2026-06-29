@@ -1,5 +1,3 @@
-![Amazon Scraper Featured Image](https://raw.githubusercontent.com/omkarcloud/amazon-scraper/master/amazon-scraper-featured-image.png)
-
 # Amazon Scraper API
 
 Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 100 free requests/month.
@@ -26,6 +24,12 @@ Here's a sample response for a **product search results page**:
   "sales_volume": "2K+ bought in past month"
 }
 ```
+
+## ▶️ Video Tutorial
+
+Watch the complete API walkthrough: 
+
+[![Amazon Scraper API Walkthrough](https://raw.githubusercontent.com/omkarcloud/amazon-scraper/master/amazon-scraper-youtube-video-preview.png)](https://www.youtube.com/watch?v=cfj0qDB1Xhw)
 
 ## Get API Key
 
