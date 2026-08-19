@@ -1,210 +1,156 @@
-![Amazon Scraper Featured Image](https://raw.githubusercontent.com/omkarcloud/amazon-scraper/master/amazon-scraper-featured-image.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/omkarcloud/botasaurus/master/images/mascot.png" alt="amazon scraper" />
+</p>
+<div align="center" style="margin-top: 0;">
+  <h1>✨ Amazon Scraper 🤖</h1>
+  <p><strong>Scrape Amazon product search, prices, ratings, reviews, and full product details — across 24 marketplaces. Clean JSON, no blocks, no proxies.</strong></p>
+</div>
+<em>
+  <h5 align="center">(Programming Language - Python 3)</h5>
+</em>
+<p align="center">
+  <a href="#">
+    <img alt="amazon-scraper forks" src="https://img.shields.io/github/forks/omkarcloud/amazon-scraper?style=for-the-badge" />
+  </a>
+  <a href="#">
+    <img alt="Repo stars" src="https://img.shields.io/github/stars/omkarcloud/amazon-scraper?style=for-the-badge&color=yellow" />
+  </a>
+</p>
+<p align="center">
+  <img src="https://views.whatilearened.today/views/github/omkarcloud/amazon-scraper.svg" width="80px" height="28px" alt="View" />
+</p>
 
-# Amazon Scraper API
+Amazon Scraper turns Amazon into clean JSON, pulled live — no blocks, no proxies to manage. Search products with sorting, browse any category, pull full product details, and fetch top reviews — all via one API.
 
-Scrape Amazon products, prices, reviews, and categories from 24 marketplaces via a simple REST API. 100 free requests/month.
+Prices and ratings come back numeric — with the rating breakdown, an AI customer-feedback summary, images, videos, variants, and frequently-bought-together — so you can compare, monitor, and analyze them programmatically instead of scraping HTML yourself.
 
-## Key Features
+It works across **24 Amazon marketplaces** via `country_code` — `US`, `GB`, `DE`, `FR`, `JP`, `IN`, `CA`, `AU`, and 16 more — with results localized and priced in each marketplace's own currency.
 
-- Search Amazon products, get product details, browse by category, and fetch top reviews — all via 1 API.
-- 100 free queries per month. No credit card required.
+- **Rated Excellent — 4.6 based on 25 reviews** on [Trustpilot](https://www.trustpilot.com/review/omkar.cloud). Our open source work is sponsored by [1000+ devs on GitHub](https://github.com/sponsors/omkarcloud).
 
-Here's a sample response for a **product search results page**:
+[![Try the Amazon Scraper API in the live playground — free, no signup](https://img.shields.io/badge/%E2%96%B6%20Playground-Run%20a%20live%20request%2C%20free-brightgreen?style=for-the-badge)](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=badge)
+
+[![Free Plan: 200 requests per month](https://img.shields.io/badge/Free%20tier-200%20requests%2Fmonth-blue?style=for-the-badge)](#pricing)
+
+The same scraper is also available on **Apify** and **RapidAPI**:
+
+[![Run on Apify](https://img.shields.io/badge/Run%20on-Apify-blue)](https://apify.com/omkar-cloud/amazon-scraper) [![Run on RapidAPI](https://img.shields.io/badge/Run%20on-RapidAPI-blue?logo=rapidapi)](https://rapidapi.com/Chetan11dev/api/amazon-scraper)
+
+## Example: Amazon Product Data in One Request
+
+One request to the product details API:
+
+```
+GET https://amazon-scraper-api.omkar.cloud/amazon/product-details?asin=B0FWD726XF
+```
+
 ```json
 {
-  "title": "Apple iPhone 15, 128GB, Black - Unlocked (Renewed)",
-  "price": 403.0,
-  "rating": 4.1,
-  "reviews": 2769,
-  "asin": "B0CMPMY9ZZ",
-  "link": "https://www.amazon.com/dp/B0CMPMY9ZZ",
-  "image_url": "https://m.media-amazon.com/images/I/51PtFHUPjBL._AC_UY654_FMwebp_QL65_.jpg",
+  "asin": "B0FWD726XF",
+  "product_name": "Apple 2025 MacBook Pro Laptop with Apple M5 chip ... 14.2-inch Liquid Retina XDR Display, 24GB Unified Memory, 1TB SSD; Space Black",
+  "link": "https://www.amazon.com/dp/B0FWD726XF",
+  "brand_info": "Visit the Apple Store",
+  "current_price": 2049,
+  "original_price": 2199,
   "currency": "USD",
-  "is_best_seller": false,
-  "is_amazon_choice": false,
-  "is_prime": false,
-  "sales_volume": "2K+ bought in past month"
+  "availability": "In Stock",
+  "condition": "Buy New",
+  "number_of_offers": 6,
+  "rating": 4.8,
+  "reviews": 128,
+  "detailed_rating": { "5": 78, "4": 12, "3": 4, "2": 1, "1": 5 },
+  "is_amazon_choice": true,
+  "is_prime": true,
+  "sales_volume": "200+ bought in past month",
+  "main_category": "Laptops",
+  "key_features": [
+    "SUPERCHARGED BY M5",
+    "BUILT FOR APPLE INTELLIGENCE",
+    "UP TO 24 HOURS OF BATTERY LIFE"
+  ],
+  "customer_feedback_summary": "Customers praise the blazing speed, stunning display, and all-day battery, and call it a major leap over Intel Macs.",
+  "main_image_url": "https://m.media-amazon.com/images/I/71an9eiBxpL._AC_SL1500_.jpg"
 }
 ```
 
-## Get API Key
+*Trimmed for readability — the full response has 50+ fields including the full description, technical details, category hierarchy, all images and product videos, variants, A+ content, brand story, top reviews, and frequently-bought-together. See the [sample response](#product-details) in the API reference.*
 
-Create an account at [omkar.cloud](https://www.omkar.cloud/auth/sign-up?redirect=/api-key) to get your API key.
+Add `country_code` to pull the product from any of 24 marketplaces — priced in that marketplace's currency.
 
-It takes just 2 minutes to sign up. You get 100 free requests every month for detailed Amazon data.
+**[Run this exact request in the Playground — no signup, no key →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=example)**
 
-This is a well built product, and your search for the best Amazon Scraper API ends right here. 
+The playground comes prefilled with this request and runs it against the live API in your browser. The JSON it returns is identical to what the API returns.
 
+## Start Getting Data in Minutes
 
-## Quick Start
-
-```bash
-curl -X GET "https://amazon-scraper-api.omkar.cloud/amazon/search?query=iPhone%2016" \
-  -H "API-Key: YOUR_API_KEY"
-```
-
-```json
-{
-  "results": [
-    {
-      "title": "Apple iPhone 15, 128GB, Black - Unlocked (Renewed)",
-      "price": 403.0,
-      "rating": 4.1,
-      "reviews": 2769,
-      "asin": "B0CMPMY9ZZ",
-      "link": "https://www.amazon.com/dp/B0CMPMY9ZZ",
-      "currency": "USD",
-      "is_best_seller": false,
-      "is_amazon_choice": false,
-      "is_prime": false,
-      "sales_volume": "2K+ bought in past month"
-    }
-  ]
-}
-```
-
-## Quick Start (Python)
-
-```bash
-pip install requests
-```
+Python and Node.js integration examples are available for every endpoint in the playground, so you can get Amazon data in minutes instead of days.
 
 ```python
 import requests
 
-# Search for products
+# Scrape Amazon product search results, live
 response = requests.get(
     "https://amazon-scraper-api.omkar.cloud/amazon/search",
-    params={"query": "iPhone 16", "country_code": "US"},
-    headers={"API-Key": "YOUR_API_KEY"}
+    params={"query": "iPhone 16", "sort_by": "reviews", "country_code": "US"},
+    headers={"API-Key": "YOUR_API_KEY"},
 )
 
 print(response.json())
 ```
-
 
 ## API Reference
 
+All endpoints are GET requests against `https://amazon-scraper-api.omkar.cloud`, authenticated with the `API-Key` header, returning JSON.
+
+Add `country_code` to any request to pull from one of [24 marketplaces](#supported-marketplaces) — results are localized and priced in that marketplace's currency.
+
 ### Product Search
 
+▶ [Try it live in the Playground →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=endpoint-search)
+
 ```
-GET https://amazon-scraper-api.omkar.cloud/amazon/search
+GET https://amazon-scraper-api.omkar.cloud/amazon/search?query=iPhone+16
 ```
 
-#### Parameters
+Real-time Amazon product search with sorting. Returns 16 products per page with `next`/`previous` pagination links.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `query` | Yes | — | Search query. Keywords or ASIN. |
-| `page` | No | `1` | Page number. |
-| `country_code` | No | `US` | Amazon marketplace code. |
-| `sort_by` | No | `relevance` | `relevance`, `lowest_price`, `highest_price`, `reviews`, `newest`, `best_sellers` |
-
-#### Example
-
-```python
-import requests
-
-response = requests.get(
-    "https://amazon-scraper-api.omkar.cloud/amazon/search",
-    params={"query": "iPhone 16", "country_code": "US"},
-    headers={"API-Key": "YOUR_API_KEY"}
-)
-
-print(response.json())
-```
-
-#### Response
+| `query` | Yes | — | Keyword or phrase to search for (e.g. `iPhone 16`). |
+| `page` | No | `1` | Page number, 16 products per page. |
+| `country_code` | No | `US` | Amazon marketplace — localizes results and currency. |
+| `sort_by` | No | `relevance` | `relevance`, `lowest_price`, `highest_price`, `reviews`, `newest`, `best_sellers`. |
 
 <details>
 <summary>Sample Response (click to expand)</summary>
 
 ```json
 {
+  "count": 143,
+  "per_page": 16,
+  "current_page": 1,
+  "total_pages": 9,
+  "next": "https://amazon-scraper-api.omkar.cloud/amazon/search?query=iPhone+16&country_code=US&sort_by=relevance&page=2",
+  "previous": null,
   "results": [
     {
-      "title": "Apple iPhone 15, 128GB, Black - Unlocked (Renewed)",
-      "price": 403.0,
+      "title": "Apple iPhone 16, 128GB, Black - Unlocked (Renewed)",
+      "price": 555,
       "original_price": null,
-      "rating": 4.1,
-      "reviews": 2769,
-      "asin": "B0CMPMY9ZZ",
-      "link": "https://www.amazon.com/dp/B0CMPMY9ZZ",
-      "image_url": "https://m.media-amazon.com/images/I/51PtFHUPjBL._AC_UY654_FMwebp_QL65_.jpg",
+      "rating": 4,
+      "reviews": 2504,
+      "asin": "B0DHJH2GZL",
+      "link": "https://www.amazon.com/dp/B0DHJH2GZL",
+      "image_url": "https://m.media-amazon.com/images/I/71ShAbeIRdL._AC_UY654_QL65_.jpg",
       "currency": "USD",
       "is_best_seller": false,
       "is_amazon_choice": false,
       "is_prime": false,
-      "delivery_info": "FREE delivery Fri, Feb 13",
-      "number_of_offers": 62,
-      "lowest_offer_price": 359.99,
+      "delivery_info": "FREE delivery Fri, Aug 21. Only 4 left in stock - order soon.",
+      "number_of_offers": 31,
+      "lowest_offer_price": 516.72,
       "has_variations": true,
-      "sales_volume": "2K+ bought in past month",
-      "is_climate_friendly": false
-    }
-  ]
-}
-```
-
-</details>
-
----
-
-### Products by Category
-
-```
-GET https://amazon-scraper-api.omkar.cloud/amazon/products/category
-```
-
-#### Parameters
-
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `category_id` | Yes | — | Amazon category ID (from URL `node=` param). |
-| `page` | No | `1` | Page number. |
-| `country_code` | No | `US` | Amazon marketplace code. |
-| `sort_by` | No | `relevance` | `relevance`, `lowest_price`, `highest_price`, `reviews`, `newest`, `best_sellers` |
-
-#### Example
-
-```python
-import requests
-
-response = requests.get(
-    "https://amazon-scraper-api.omkar.cloud/amazon/products/category",
-    params={"category_id": "16225007011", "country_code": "US"},
-    headers={"API-Key": "YOUR_API_KEY"}
-)
-
-print(response.json())
-```
-
-#### Response
-
-<details>
-<summary>Sample Response (click to expand)</summary>
-
-```json
-{
-  "results": [
-    {
-      "title": "Apple iPhone 15, 128GB, Black - Unlocked (Renewed)",
-      "price": 403.0,
-      "original_price": null,
-      "rating": 4.1,
-      "reviews": 2769,
-      "asin": "B0CMPMY9ZZ",
-      "link": "https://www.amazon.com/dp/B0CMPMY9ZZ",
-      "image_url": "https://m.media-amazon.com/images/I/51PtFHUPjBL._AC_UY654_FMwebp_QL65_.jpg",
-      "currency": "USD",
-      "is_best_seller": false,
-      "is_amazon_choice": false,
-      "is_prime": false,
-      "delivery_info": "FREE delivery Fri, Feb 13",
-      "number_of_offers": 62,
-      "lowest_offer_price": 359.99,
-      "has_variations": true,
-      "sales_volume": "2K+ bought in past month",
+      "sales_volume": "1K+ bought in past month",
       "is_climate_friendly": false
     }
   ]
@@ -217,384 +163,119 @@ print(response.json())
 
 ### Product Details
 
+▶ [Try it live in the Playground →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=endpoint-product)
+
 ```
-GET https://amazon-scraper-api.omkar.cloud/amazon/product-details
+GET https://amazon-scraper-api.omkar.cloud/amazon/product-details?asin=B0FWD726XF
 ```
 
-#### Parameters
+Real-time full product details by ASIN — 50+ fields.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `asin` | Yes | — | Amazon ASIN (e.g., `B0FWD726XF`). Also accepts product URLs. |
-| `country_code` | No | `US` | Amazon marketplace code. |
+| `asin` | Yes | — | Amazon product ASIN (e.g. `B0FWD726XF`). |
+| `country_code` | No | `US` | Amazon marketplace — prices come back in its currency. |
 
-#### Example
-
-```python
-import requests
-
-response = requests.get(
-    "https://amazon-scraper-api.omkar.cloud/amazon/product-details",
-    params={"asin": "B0FWD726XF", "country_code": "US"},
-    headers={"API-Key": "YOUR_API_KEY"}
-)
-
-print(response.json())
-```
-
-#### Response Fields
-
-Returns 50+ fields including price, rating, description, key features, technical specs, all images/videos, rating distribution, product variants, category hierarchy, brand info, frequently bought together, and top reviews.
+Returns pricing (current, original, unit), availability and condition, number of offers, delivery estimate, rating with the 1–5 breakdown, an AI customer-feedback summary, top reviews, all images and product videos, key features, full description, technical details, category hierarchy, variants, A+ content, brand story, and frequently-bought-together.
 
 <details>
 <summary>Sample Response (click to expand)</summary>
 
 ```json
-
 {
   "asin": "B0FWD726XF",
-  "product_name": "Apple 2025 MacBook Pro Laptop with M5 chip with 10‑core CPU and GPU: Built for Apple Intelligence, 14.2-inch Liquid Retina XDR Display, 24GB Unified Memory, 1TB SSD Storage, Space Black",
+  "product_name": "Apple 2025 MacBook Pro Laptop with Apple M5 chip ... 14.2-inch Liquid Retina XDR Display, 24GB Unified Memory, 1TB SSD; Space Black",
   "link": "https://www.amazon.com/dp/B0FWD726XF",
-  "slug": "Apple-2025-MacBook-Laptop-10%E2%80%91core",
-  "parent_asin": "B0DLRGKGTV",
-  "landing_asin": "B0FWD726XF",
+  "parent_asin": "B0FWCXXXXX",
   "brand_info": "Visit the Apple Store",
-  "brand_url": "https://www.amazon.com/stores/Apple/page/77D9E1F7-0337-4282-9DB6-B6B8FB2DC98D?lp_asin=B0FWD726XF&ref_=ast_bln",
-  "brand_urls": [
-    "https://www.amazon.com/stores/Apple/page/77D9E1F7-0337-4282-9DB6-B6B8FB2DC98D?lp_asin=B0FWD726XF&ref_=ast_bln"
-  ],
-  "current_price": 1849.0,
-  "original_price": 1999.0,
-  "unit_price": null,
-  "unit_count": null,
+  "current_price": 2049,
+  "original_price": 2199,
   "currency": "USD",
-  "min_order_quantity": null,
+  "min_order_quantity": 1,
   "country": "US",
   "availability": "In Stock",
-  "condition": "Buy new:",
+  "condition": "Buy New",
   "number_of_offers": 6,
-  "delivery_info": "FREE delivery Monday, February 16 Or Prime members get FREE delivery Tomorrow, February 12. Join Prime",
-  "estimated_delivery_date": "Monday, February 16",
-  "rating": 4.7,
-  "reviews": 1167,
-  "detailed_rating": {
-    "1": 3,
-    "2": 0,
-    "3": 3,
-    "4": 5,
-    "5": 89
-  },
-  "customer_feedback_summary": null,
-  "top_reviews": [
-    {
-      "review_id": "R1H9MVROAP2XKG",
-      "product_asin": "B0FWD726XF",
-      "review_title": "Sleek, powerful, and a photographers dream. 11/10",
-      "review_text": "Okay so I actually had to return this item with amazon because they messed up delivery...",
-      "review_link": "https://www.amazon.com/gp/customer-reviews/R1H9MVROAP2XKG",
-      "rating": 5,
-      "review_date": "Reviewed in the United States on December 1, 2025",
-      "is_verified_purchase": true,
-      "helpful_votes": 32,
-      "reviewer_name": "Catherine Mason",
-      "reviewer_id": "AF77JTSDDJJG6FXTYJAQOG4B4QFA",
-      "reviewer_url": "https://www.amazon.com/gp/profile/amzn1.account.AF77JTSDDJJG6FXTYJAQOG4B4QFA",
-      "reviewer_avatar": "https://m.media-amazon.com/images/S/amazon-avatars-global/default.png",
-      "review_images": [],
-      "review_video": null,
-      "reviewed_variant": {
-        "Style": "Apple M5 chip",
-        "Capacity": "16GB Unified Memory, 512GB SSD Storage",
-        "Color": "Space Black",
-        "Set": "Without AppleCare+"
-      },
-      "is_vine_review": false
-    },
-    ...
-  ],
+  "delivery_info": "FREE delivery Wed, Aug 20",
+  "rating": 4.8,
+  "reviews": 128,
+  "detailed_rating": { "5": 78, "4": 12, "3": 4, "2": 1, "1": 5 },
+  "customer_feedback_summary": "Customers praise the blazing speed, stunning display, and all-day battery, and call it a major leap over Intel Macs.",
   "is_bestseller": false,
   "is_amazon_choice": true,
   "is_prime": true,
-  "is_climate_friendly": true,
-  "sales_volume": "1K+ bought in past month",
-  "main_image_url": "https://m.media-amazon.com/images/I/6112T6g2P-L._AC_SL1500_.jpg",
-  "additional_image_urls": [
-    "https://m.media-amazon.com/images/I/6112T6g2P-L._AC_SL1500_.jpg",
-    "https://m.media-amazon.com/images/I/61SBJYmPyFL._AC_SL1500_.jpg",
-    "https://m.media-amazon.com/images/I/81uUolI6viL._AC_SL1500_.jpg",
-    "https://m.media-amazon.com/images/I/616eNe+uHRL._AC_.jpg",
-    "https://m.media-amazon.com/images/I/81cfIW5+p7L._AC_SL1500_.jpg",
-    "https://m.media-amazon.com/images/I/71c2cMlWe5L._AC_SL1500_.jpg",
-    "https://m.media-amazon.com/images/I/61EQmd9L4kL._AC_SL1500_.jpg"
-  ],
-  "product_videos": [
-    {
-      "id": "amzn1.vse.video.0882c1076e654eab890412db954d0944",
-      "title": "MacBook Pro M5 Chip",
-      "url": "https://m.media-amazon.com/images/S/vse-vms-transcoding-artifact-us-east-1-prod/a60f6616-cd5d-4a84-a49a-b0ca7c22effb/default.jobtemplate.hls.m3u8",
-      "height": 1080,
-      "width": 1920,
-      "thumbnail": "https://m.media-amazon.com/images/I/9103IPwwY2L._SX35_SY46._CR0,0,35,46_BG85,85,85_BR-120_PKdp-play-icon-overlay__.png",
-      "product_id": "B0FWD726XF",
-      "parent_id": "B0DLRGKGTV"
-    },
-    {
-      "id": "amzn1.vse.video.007d9729d15a4dc7b533d61249583a76",
-      "title": "AppleCare+ for Mac",
-      "url": "https://m.media-amazon.com/images/S/vse-vms-transcoding-artifact-us-east-1-prod/3f731513-0ce4-4f42-ba76-e97deb21bcc7/default.jobtemplate.hls.m3u8",
-      "height": 1080,
-      "width": 1920,
-      "thumbnail": "https://m.media-amazon.com/images/I/71N+KnY1REL._SX35_SY46._CR0,0,35,46_BG85,85,85_BR-120_PKdp-play-icon-overlay__.png",
-      "product_id": "B0FWD726XF",
-      "parent_id": "B0DLRGKGTV"
-    }
-  ],
-  "user_videos": [],
-  "video_thumbnail": "https://m.media-amazon.com/images/I/9103IPwwY2L.SX522_.png",
+  "sales_volume": "200+ bought in past month",
+  "main_image_url": "https://m.media-amazon.com/images/I/71an9eiBxpL._AC_SL1500_.jpg",
+  "additional_image_urls": ["https://m.media-amazon.com/images/I/61X1Xl3G7lL._AC_SL1500_.jpg"],
   "has_video": true,
-  "key_features": [
-    "SUPERCHARGED BY M5 — The 14-inch MacBook Pro with M5 brings next-generation speed and powerful on-device AI to personal, professional, and creative tasks. Featuring all-day battery life and a breathtaking Liquid Retina XDR display with up to 1600 nits peak brightness, it's pro in every way.*",
-    "HAPPILY EVER FASTER — Along with its faster CPU and unified memory, M5 features a more powerful GPU with a Neural Accelerator built into each core, delivering faster AI performance. So you can blaze through demanding workloads at mind-bending speeds.",
-    "BUILT FOR APPLE INTELLIGENCE — Apple Intelligence is the personal intelligence system that helps you write, express yourself, and get things done effortlessly. With groundbreaking privacy protections, it gives you peace of mind that no one else can access your data — not even Apple.*",
-    "ALL-DAY BATTERY LIFE — MacBook Pro delivers the same exceptional performance whether it's running on battery or plugged in.",
-    "APPS FLY WITH APPLE SILICON — All your favorites, including Microsoft 365 and Adobe Creative Cloud, run lightning fast in macOS.*",
-    "IF YOU LOVE IPHONE, YOU'LL LOVE MAC — Mac works like magic with your other Apple devices. View and control what's on your iPhone from your Mac with iPhone Mirroring.* Copy something on iPhone and paste it on Mac. Send texts with Messages or use your Mac to make and answer FaceTime calls.*",
-    "BRILLIANT PRO DISPLAY — The 14.2-inch Liquid Retina XDR display features 1600 nits peak brightness, up to 1000 nits sustained brightness, and 1,000,000:1 contrast.*",
-    "ADVANCED CAMERA AND AUDIO — Stay perfectly framed and sound great with a 12MP Center Stage camera, three studio-quality mics, and six speakers with Spatial Audio and support for Dolby Atmos.",
-    "CONNECT IT ALL — This MacBook Pro features three Thunderbolt 4 ports and a MagSafe 3 charging port, SDXC card slot, HDMI port, and headphone jack. And it supports up to two external displays.",
-    "* LEGAL DISCLAIMERS — This is a summary of the main product features. See below to learn more."
+  "key_features": ["SUPERCHARGED BY M5", "BUILT FOR APPLE INTELLIGENCE", "UP TO 24 HOURS OF BATTERY LIFE"],
+  "main_category": "Laptops",
+  "category_hierarchy": ["Electronics", "Computers & Accessories", "Laptops", "Traditional Laptops"],
+  "variation_dimensions": ["Color", "Size"],
+  "variants": [
+    { "asin": "B0FWD726XF", "name": "Space Black · 24GB · 1TB", "price": 2049 }
   ],
-  "full_description": null,
-  "technical_details": {
-    "Product Dimensions": "12.31 x 8.71 x 0.61 inches",
-    "Item Weight": "3.41 pounds",
-    "Manufacturer": "Apple",
-    "ASIN": "B0FWD726XF",
-    "Item model number": "MDE34LL/A",
-    "Batteries": "1 Lithium Ion batteries required. (included)",
-    "Date First Available": "October 14, 2025"
-  },
-  "product_details": {
-    "Brand": "Apple",
-    "Model Name": "MacBook Pro",
-    "Screen Size": "14.2 Inches",
-    "Color": "Space Black",
-    "Hard Disk Size": "1 TB",
-    "CPU Model": "Unknown",
-    "Ram Memory Installed Size": "24 GB",
-    "Operating System": "Mac OS",
-    "Special Feature": "Backlit Keyboard, Fingerprint Reader",
-    "Graphics Card Description": "Integrated"
-  },
-  "main_category": {
-    "id": "aps",
-    "name": "All Departments"
-  },
-  "category_hierarchy": [],
-  "variation_dimensions": [
-    "style",
-    "size",
-    "color",
-    "configuration"
-  ],
-  "variants": {
-    "style": [
-      {
-        "asin": "B0FWD726XF",
-        "value": "Apple M5 chip",
-        "is_available": true
-      },
-      {
-        "asin": "B0DLHBGBW3",
-        "value": "Apple M4 Pro chip",
-        "is_available": true
-      },
-      {
-        "asin": "B0DLHCXF81",
-        "value": "Apple M4 Max chip",
-        "is_available": false
-      }
-    ],
-    "size": [
-      {
-        "asin": "B0FWD623D1",
-        "value": "16GB Unified Memory, 1TB SSD Storage",
-        "is_available": true
-      },
-      {
-        "asin": "B0FWD6SKL6",
-        "value": "16GB Unified Memory, 512GB SSD Storage",
-        "is_available": true
-      },
-      {
-        "asin": "B0FWD726XF",
-        "value": "24GB Unified Memory, 1TB SSD Storage",
-        "is_available": true
-      },
-      {
-        "asin": "B0DLHY2BJ6",
-        "value": "24GB Unified Memory, 512GB SSD Storage",
-        "is_available": false
-      },
-      {
-        "asin": "B0DLHCXF81",
-        "value": "36GB Unified Memory, 1TB SSD Storage",
-        "is_available": false
-      }
-    ],
-    "color": [
-      {
-        "asin": "B0FWD726XF",
-        "value": "Space Black",
-        "photo": "https://m.media-amazon.com/images/I/01B-RyYQGML.jpg",
-        "is_available": true
-      },
-      {
-        "asin": "B0FWD7QF6M",
-        "value": "Silver",
-        "photo": "https://m.media-amazon.com/images/I/01xh++YLubL.jpg",
-        "is_available": true
-      }
-    ],
-    "configuration": [
-      {
-        "asin": "B0FWD726XF",
-        "value": "Without AppleCare+",
-        "is_available": true
-      },
-      {
-        "asin": "B0FWLNSJ1M",
-        "value": "With AppleCare+ (3 Years)",
-        "is_available": true
-      }
-    ]
-  },
-  "all_variants": {
-    "B0FWLNSJ1M": {
-      "style": "Apple M5 chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0FWD5MR3L": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 512GB SSD Storage",
-      "color": "Silver",
-      "configuration": "Without AppleCare+"
-    },
-    "B0DLHDJH98": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 512GB SSD Storage",
-      "color": "Silver",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWKR7V14": {
-      "style": "Apple M5 chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Silver",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0DM6YG983": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0FWKTY1NM": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0DM6ZP92H": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 512GB SSD Storage",
-      "color": "Space Black",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0DLHBGBW3": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0DLHY2BJ6": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 512GB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWD6SKL6": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 512GB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWKWYYKS": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 512GB SSD Storage",
-      "color": "Silver",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0FWD623D1": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWD7QF6M": {
-      "style": "Apple M5 chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Silver",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWKT6VRG": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 512GB SSD Storage",
-      "color": "Space Black",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0DLHGN9P2": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Silver",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWKV16DL": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 1TB SSD Storage",
-      "color": "Silver",
-      "configuration": "With AppleCare+ (3 Years)"
-    },
-    "B0FWD726XF": {
-      "style": "Apple M5 chip",
-      "size": "24GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0FWD8WBSW": {
-      "style": "Apple M5 chip",
-      "size": "16GB Unified Memory, 1TB SSD Storage",
-      "color": "Silver",
-      "configuration": "Without AppleCare+"
-    },
-    "B0DLHCXF81": {
-      "style": "Apple M4 Max chip",
-      "size": "36GB Unified Memory, 1TB SSD Storage",
-      "color": "Space Black",
-      "configuration": "Without AppleCare+"
-    },
-    "B0DM733GXY": {
-      "style": "Apple M4 Pro chip",
-      "size": "24GB Unified Memory, 512GB SSD Storage",
-      "color": "Silver",
-      "configuration": "With AppleCare+ (3 Years)"
+  "has_aplus_content": true,
+  "frequently_bought_together": [
+    { "asin": "B0CHX3QBCH", "title": "Apple USB-C to MagSafe 3 Cable", "price": 49 }
+  ]
+}
+```
+
+</details>
+
+---
+
+### Products By Category
+
+▶ [Try it live in the Playground →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=endpoint-category)
+
+```
+GET https://amazon-scraper-api.omkar.cloud/amazon/products/category?category_id=172282
+```
+
+Browse every product in an Amazon category, 24 per page, with `next`/`previous` links. Each product carries the same fields as a search result.
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `category_id` | Yes | — | Amazon category / browse-node ID (e.g. `172282`). |
+| `page` | No | `1` | Page number, 24 products per page. |
+| `country_code` | No | `US` | Amazon marketplace — localizes results and currency. |
+| `sort_by` | No | `relevance` | `relevance`, `lowest_price`, `highest_price`, `reviews`, `newest`, `best_sellers`. |
+
+<details>
+<summary>Sample Response (click to expand)</summary>
+
+```json
+{
+  "count": 77822,
+  "per_page": 24,
+  "current_page": 1,
+  "total_pages": 3243,
+  "next": "https://amazon-scraper-api.omkar.cloud/amazon/products/category?category_id=172282&country_code=US&sort_by=relevance&page=2",
+  "previous": null,
+  "results": [
+    {
+      "title": "Sony WH-1000XM5 Wireless Noise Canceling Headphones",
+      "price": 328,
+      "original_price": 399.99,
+      "rating": 4.6,
+      "reviews": 18542,
+      "asin": "B09XS7JWHH",
+      "link": "https://www.amazon.com/dp/B09XS7JWHH",
+      "image_url": "https://m.media-amazon.com/images/I/61+btxzpfDL._AC_UY654_QL65_.jpg",
+      "currency": "USD",
+      "is_best_seller": true,
+      "is_amazon_choice": false,
+      "is_prime": true,
+      "delivery_info": "FREE delivery Thu, Aug 20",
+      "number_of_offers": 12,
+      "lowest_offer_price": 319.99,
+      "has_variations": true,
+      "sales_volume": "5K+ bought in past month",
+      "is_climate_friendly": false
     }
-  },
-  "has_aplus_content": false,
-  "aplus_images": [],
-  "has_brand_story": false,
-  "frequently_bought_together": []
+  ]
 }
 ```
 
@@ -604,32 +285,18 @@ Returns 50+ fields including price, rating, description, key features, technical
 
 ### Top Product Reviews
 
+▶ [Try it live in the Playground →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=endpoint-reviews)
+
 ```
-GET https://amazon-scraper-api.omkar.cloud/amazon/product-reviews/top
+GET https://amazon-scraper-api.omkar.cloud/amazon/product-reviews/top?asin=B0FWD726XF
 ```
 
-#### Parameters
+The top reviews for a product by ASIN — full text, title, and review ID.
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
-| `asin` | Yes | — | Amazon ASIN. |
-| `country_code` | No | `US` | Amazon marketplace code. |
-
-#### Example
-
-```python
-import requests
-
-response = requests.get(
-    "https://amazon-scraper-api.omkar.cloud/amazon/product-reviews/top",
-    params={"asin": "B0FWD726XF", "country_code": "US"},
-    headers={"API-Key": "YOUR_API_KEY"}
-)
-
-print(response.json())
-```
-
-#### Response
+| `asin` | Yes | — | Amazon product ASIN. |
+| `country_code` | No | `US` | Amazon marketplace. |
 
 <details>
 <summary>Sample Response (click to expand)</summary>
@@ -638,28 +305,10 @@ print(response.json())
 {
   "results": [
     {
-      "review_id": "R1H9MVROAP2XKG",
+      "review_id": "R1LD6F7278XWSV",
       "product_asin": "B0FWD726XF",
-      "review_title": "Sleek, powerful, and a photographers dream. 11/10",
-      "review_text": "The battery life is good for how powerful it is. Overall super happy with this laptop. Would buy again every time.",
-      "review_link": "https://www.amazon.com/gp/customer-reviews/R1H9MVROAP2XKG",
-      "rating": 5,
-      "review_date": "Reviewed in the United States on December 1, 2025",
-      "is_verified_purchase": true,
-      "helpful_votes": 32,
-      "reviewer_name": "Catherine Mason",
-      "reviewer_id": "AF77JTSDDJJG6FXTYJAQOG4B4QFA",
-      "reviewer_url": "https://www.amazon.com/gp/profile/amzn1.account.AF77JTSDDJJG6FXTYJAQOG4B4QFA",
-      "reviewer_avatar": "https://m.media-amazon.com/images/S/amazon-avatars-global/default.png",
-      "review_images": [],
-      "review_video": null,
-      "reviewed_variant": {
-        "Style": "Apple M5 chip",
-        "Capacity": "16GB Unified Memory, 512GB SSD Storage",
-        "Color": "Space Black",
-        "Set": "Without AppleCare+"
-      },
-      "is_vine_review": false
+      "review_title": "Incredible (from a PC guy)",
+      "review_text": "I've been a Windows and Linux guy for decades and actively avoided Macs for years... The new Apple Silicon M5 changes all of that. This MacBook Pro is absurdly fast. Everything feels instant..."
     }
   ]
 }
@@ -667,82 +316,80 @@ print(response.json())
 
 </details>
 
-### Supported Amazon Marketplaces
+---
 
-`US`, `AU`, `BR`, `CA`, `CN`, `FR`, `DE`, `IN`, `IT`, `MX`, `NL`, `SG`, `ES`, `TR`, `AE`, `GB`, `JP`, `SA`, `PL`, `SE`, `BE`, `EG`, `ZA`, `IE`
+### Supported Marketplaces
 
-## Error Handling
+Add `country_code` to any request to pull from that marketplace, localized and priced in its currency. 24 marketplaces are supported:
 
-```python
-response = requests.get(
-    "https://amazon-scraper-api.omkar.cloud/amazon/search",
-    params={"query": "iPhone 16"},
-    headers={"API-Key": "YOUR_API_KEY"}
-)
+`US`, `GB`, `CA`, `AU`, `IE`, `DE`, `FR`, `IT`, `ES`, `NL`, `BE`, `SE`, `PL`, `TR`, `JP`, `CN`, `SG`, `IN`, `AE`, `SA`, `EG`, `ZA`, `BR`, `MX`
 
-if response.status_code == 200:
-    data = response.json()
-elif response.status_code == 401:
-    # Invalid API key
-    pass
-elif response.status_code == 429:
-    # Rate limit exceeded
-    pass
-```
-
-## FAQs
-
-### What data does the API return?
-
-**Product Search** returns per product:
-- Title, price, original price, currency
-- Star rating, review count, sales volume
-- ASIN, product URL, image URL
-- Best Seller, Amazon's Choice, and Prime badges
-- Delivery info, number of offers, lowest offer price
-
-**Product Details** returns 50+ fields including:
-- Full description, key features, technical specs
-- All product images and videos
-- Rating distribution breakdown
-- Product variations (size, color, etc.)
-- Category hierarchy, brand info
-- Frequently bought together items
-- Customer feedback summary and top reviews
-
-**Top Reviews** returns per review:
-- Review title, text, rating, and date
-- Verified purchase status, helpful vote count
-- Reviewer name, avatar, and profile link
-- Review images and videos
-
-
-All in structured JSON. Ready to use in your app.
-
-### How accurate is the data?
-
-Data is pulled from Amazon in real time. Every API call fetches live data — not cached or stale results. Prices, availability, ratings, and reviews reflect what's on Amazon right now.
-
-### What's the difference between Product Search and Products by Category?
-
-**Product Search** finds products matching a keyword or ASIN — like typing into the Amazon search bar.
-
-**Products by Category** returns all products within a specific Amazon category (e.g., "Electronics" or "Books > Science Fiction"). Pass a `category_id` from the Amazon URL, get a paginated list of every product in that category.
-
-Use Search when you know what you're looking for. Use Category when you want to explore or monitor an entire product segment.
-
-## Rate Limits
+## Pricing
 
 | Plan | Price | Requests/Month |
 |------|-------|----------------|
-| Free | $0 | 100 |
-| Grow | $48 | 75,000 |
-| Scale | $148 | 300,000 |
+| Free | $0 | 200 |
+| Starter | $16 | 20,000 |
+| Grow | $48 | 100,000 |
+| Scale | $148 | 400,000 |
 
-## Questions? We have answers.
+1 API call = 1 request
 
-Reach out anytime. We will solve your query within 1 working day.
+Free Plan Available — [create your API key →](https://www.omkar.cloud/auth/sign-up?redirect=/api-key&utm_source=github&utm_medium=cpc&utm_content=pricing-signup). No credit card for the free tier.
+
+## FAQs
+
+### Can I try the API before signing up?
+
+Yes. The playground runs live requests in your browser — free, no account, no API key. [Try it in the Playground →](https://www.omkar.cloud/tools/amazon-scraper-api/playground?utm_source=github&utm_medium=cpc&utm_content=faq)
+
+### How do I search Amazon products?
+
+Call Product Search (`GET /amazon/search?query=iPhone+16`) with a keyword. It returns 16 products per page — title, price, rating, review count, ASIN, image, and best-seller/Prime flags — plus a `next` link to walk through every page. Sort with `sort_by` (`lowest_price`, `reviews`, `best_sellers`, and more).
+
+### What's in the full product details?
+
+Product Details (by ASIN) returns 50+ fields: current/original/unit pricing, availability and condition, the 1–5 rating breakdown, an AI customer-feedback summary, top reviews, all images and product videos, key features, full description, technical details, category hierarchy, variants, A+ content, brand story, and frequently-bought-together.
+
+### Does it work on non-US Amazon sites, in local currency?
+
+Yes. Pass `country_code` — 24 marketplaces are supported (`GB`, `DE`, `FR`, `JP`, `IN`, `CA`, `AU`, and more). Results are localized and prices come back in that marketplace's currency.
+
+### How fresh is the data?
+
+Data is scraped from Amazon in real time. Every API call fetches live data — not cached or stale results. Prices, ratings, stock, and reviews reflect what's on Amazon right now.
+
+### Will I get blocked or need proxies?
+
+No. We handle the scraping infrastructure — you call a normal REST API and never touch Amazon directly, so there are no proxies, headless browsers, or CAPTCHAs on your side.
+
+### How do I get a product's ASIN or a category ID?
+
+ASINs come back on every search and category result (the `asin` field), or take it from any Amazon product URL (`/dp/B0FWD726XF` → `B0FWD726XF`). Category IDs are Amazon browse-node IDs, found in category URLs.
+
+## More E-commerce & Data Scrapers: AliExpress & Google Maps
+
+- **[AliExpress Scraper API](https://github.com/omkarcloud/aliexpress-scraper)** — the same clean JSON for AliExpress: product search and full product details with per-SKU pricing, stock, and shipping across 64 ship-to countries. Compare the same product's price on Amazon and AliExpress.
+
+- **[Google Maps Scraper (3,100+ GitHub Stars)](https://github.com/omkarcloud/google-maps-scraper)** — need tens of thousands of leads? Type a niche and a city ("dentists in New York") and get every matching business as a ready-to-call lead list — name, address, phone, website, emails, rating, and reviews. The free tier alone pulls up to 100K leads a month.
+
+- **[Website Email Contact Scraper](https://github.com/omkarcloud/website-email-contact-scraper)** — **Free and open source.** Point it at any website and get every email, phone number, and social profile on it, each with source pages and an official/unofficial flag.
+
+## Support
+
+Built by developers, for developers — when you reach out, you talk to the engineers who built the API, not a support script. Message us anytime and we'll solve your query within 1 working day.
+
 
 [![Contact Us on WhatsApp about Amazon Scraper](https://raw.githubusercontent.com/omkarcloud/assets/master/images/whatsapp-us.png)](https://api.whatsapp.com/send?phone=918178804274&text=I%20have%20a%20question%20about%20the%20Amazon%20Scraper%20API.)
 
-[![Contact Us on Email about Amazon Scraper](https://raw.githubusercontent.com/omkarcloud/assets/master/images/ask-on-email.png)](mailto:happy.to.help@omkar.cloud?subject=Amazon%20Scraper%20API%20Question)
+Email: [happy.to.help@omkar.cloud](mailto:happy.to.help@omkar.cloud?subject=Amazon%20Scraper%20API%20Question)
+
+[![Email Us about Amazon Scraper](https://raw.githubusercontent.com/omkarcloud/assets/master/images/ask-on-email.png)](mailto:happy.to.help@omkar.cloud?subject=Amazon%20Scraper%20API%20Question)
+
+## Love It? Star It! ⭐
+
+From one developer to another: If the Amazon Scraper API saved you time, please [star the repo](https://github.com/omkarcloud/amazon-scraper).
+
+Here's why it matters: most developers judge a scraper by its stars before trying it. Your star helps the next developer — someone deciding whether the Amazon data here is real and reliable — try it with confidence.
+
+It takes only 1 second, and means the world to me.
