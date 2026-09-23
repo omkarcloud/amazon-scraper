@@ -1,1 +1,0 @@
-from .amazon_scraper import Amazon

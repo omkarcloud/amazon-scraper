@@ -1,14 +1,11 @@
-version: "3"
 services:
-    bot-1:
-      restart: "no"
-      shm_size: 800m
-      build:
-        dockerfile: Dockerfile
-        context: .
-      volumes:
-        - ./output:/app/output
-        - ./tasks:/app/tasks
-        - ./profiles:/app/profiles
-        - ./profiles.json:/app/profiles.json
-        - ./local_storage.json:/app/local_storage.json
+  amazon-scraper:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      # Optional — only needed for country=JP / country=AU (a proxy in that
+      # country) or very high volumes.
+      # - AMAZON_PROXY=http://user:pass@host:port
