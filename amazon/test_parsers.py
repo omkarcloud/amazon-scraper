@@ -92,6 +92,8 @@ def test_helpers():
     assert P.money("$1,299.99", "USD") == {"amount": 1299.99, "currency": "USD"}
     assert P.money("€749.00", "USD")["currency"] == "EUR"
     assert P.money("INR 372,862.44", "USD") == {"amount": 372862.44, "currency": "INR"}
+    assert P.money("$4,699.00", "AUD") == {"amount": 4699.0, "currency": "AUD"}
+    assert P.money("C$19.99", "USD")["currency"] == "CAD"
     assert P.rating_of("4.7 out of 5 stars") == 4.7
     assert P.rating_of("4,2 von 5 Sternen") == 4.2
     assert P.to_int("(43,049)") == 43049

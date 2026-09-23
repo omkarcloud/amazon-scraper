@@ -91,6 +91,7 @@ _CURRENCY_SYMBOLS = {"$": "USD", "US$": "USD", "£": "GBP", "€": "EUR", "₹":
                      "kr": "SEK", "zł": "PLN", "TL": "TRY", "AED": "AED", "SAR": "SAR", "EGP": "EGP", "R": "ZAR",
                      "SEK": "SEK", "PLN": "PLN", "USD": "USD", "EUR": "EUR", "GBP": "GBP", "INR": "INR", "JPY": "JPY",
                      "CAD": "CAD", "AUD": "AUD", "SGD": "SGD", "BRL": "BRL", "MXN": "MXN", "TRY": "TRY", "ZAR": "ZAR"}
+_DOLLAR_CURRENCIES = {"USD", "AUD", "CAD", "SGD", "MXN"}
 _DATE_FORMATS = ("%B %d, %Y", "%d %B %Y", "%B %d %Y", "%d. %B %Y", "%Y年%m月%d日", "%d de %B de %Y", "%d %b %Y",
                  "%b %d, %Y", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y")
 _IMAGE_SIZE_RE = re.compile(r"\._[^./]+_(?=\.[a-z]+$)")
@@ -182,6 +183,10 @@ def money(value, currency=None):
     code = currency
     for symbol, iso in sorted(_CURRENCY_SYMBOLS.items(), key=lambda kv: -len(kv[0])):
         if symbol in raw:
+            # a bare "$" is every dollar marketplace's own symbol (amazon.com.au,
+            # .ca, .sg, .com.mx show "$4,699.00"): keep the marketplace currency
+            if symbol == "$" and currency in _DOLLAR_CURRENCIES:
+                break
             code = iso
             break
     return {"amount": amount, "currency": code}
