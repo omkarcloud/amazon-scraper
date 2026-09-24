@@ -99,16 +99,6 @@ def test_rankings_and_deals():
     assert body["deals"] and body["currency"] == "EUR"
 
 
-def test_legacy_paths():
-    body = call("/amazon/product-details", asin="B07QSFHT27", country_code="US")
-    assert body["title"].startswith("PAVOI")
-    body = call("/amazon/products/category", category_id="172282", sort_by="lowest_price")
-    assert body["results"]
-    body = call("/amazon/search", query="laptop", country_code="GB", sort_by="newest")
-    assert body["country"] == "GB" and body["results"]
-    assert call("/amazon/product-reviews/top", asin="B07QSFHT27")["asin"] == "B07QSFHT27"
-
-
 def test_sellers_and_influencers():
     body = call("/amazon/sellers/details", seller="A1H1EU8178QTRH")
     assert body["name"] == "PAVOI Jewelry" and body["ratings"]["lifetime"]["count"] > 100

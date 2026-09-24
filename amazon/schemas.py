@@ -18,7 +18,6 @@ marketplace is used (MarketplaceSchema.pre_load).
 from marshmallow import ValidationError, missing, post_load, pre_load, validate
 
 from amazon import refs, sites
-from amazon.legacy import legacy_aliases
 from amazon.products import CONDITIONS as OFFER_CONDITIONS
 from amazon.rankings import DEAL_SORTS, LIST_TYPES
 from amazon.search import CONDITIONS, DEAL_TYPES, SORTS
@@ -126,9 +125,7 @@ class MarketplaceSchema(BaseSchema):
 
     @pre_load
     def country_from_link(self, data, **kwargs):
-        # retired amazon-scraper-api param names (country_code, sort_by, asin,
-        # category_id) keep working; see amazon/legacy.py
-        data = legacy_aliases(data, self.fields)
+        data = dict(data)
         if data.get("country"):
             return data
         for key in _REF_KEYS:
