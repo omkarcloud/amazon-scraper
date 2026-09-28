@@ -45,14 +45,6 @@ Amazon Scraper is a **free and open-source** scraper that gets you **unlimited**
 
 ## 🚀 Unlimited Free Amazon Data — Get It in 60 Seconds
 
-> **👀 Don't want to install anything yet?** See the data quality for yourself first — live Amazon data in your browser in under a minute, no setup, no credit card.
->
-> 1. [**Grab the free plan**](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/pricing) — 1,000 free calls every month, no credit card.
-> 2. [**Open the playground**](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/playground) — a best-selling PAVOI necklace is already filled in. Click **Test Endpoint** and see its price, stock, seller, rating and best-seller rank in a second or two.
-> 3. **Try any product, search or seller you like** — all 21 endpoints are there, every one pre-filled.
->
-> Love the data? Copy the ready-made Python, Node.js or cURL snippet straight into your project — or install it below for **unlimited free** data.
-
 1️⃣ Clone and install:
 ```bash
 git clone https://github.com/omkarcloud/amazon-scraper
@@ -91,6 +83,16 @@ curl "http://localhost:8000/products/details?product=B07QSFHT27"
 ```
 
 All 21 endpoints are now live at `http://localhost:8000`.
+
+## 👀 Try It Without Installing
+
+Want to check the data before setting anything up? The same API is hosted on RapidAPI.
+
+1. [Subscribe to the free plan](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/pricing) — 1,000 calls/month, no credit card.
+2. [Open the playground](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/playground) — Product Details is pre-filled with `B07QSFHT27`. Click **Test Endpoint** to see the full response.
+3. Change the parameters or pick another endpoint. All 21 have working example values.
+
+The playground also generates the request code in Python, Node.js, cURL and other languages.
 
 ## 📚 Endpoints
 
