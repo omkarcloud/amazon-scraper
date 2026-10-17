@@ -2,47 +2,6 @@
 
 Amazon Scraper is a **free and open-source** scraper that gets you **unlimited** detailed Amazon data for free.
 
-## ✨ What Can I Get?
-
-- 🛍️ **Full details on any product in 23 marketplaces** — price, seller, stock, delivery, specs, images, variants & AI review summary
-- 🔍 **Search & browse every category** — sort by price, reviews or best sellers; filter by brand, Prime, rating & deals
-- 🏆 **Top 100 Best Sellers in every category** — plus New Releases, Movers & Shakers, Most Wished For & Today's Deals
-- 🏪 **Offers, sellers & influencers** — every seller's offer, seller ratings & feedback, influencer storefronts
-
-## 🎥 Example: A Full Amazon Product
-
-```json
-{
-  "asin": "B07QSFHT27",
-  "title": "PAVOI 14K Gold Plated Crystal Solitaire 1.5 Carat (7.3mm) Cubic Zirconia Dainty Choker Necklace | Gold Necklaces for Women",
-  "link": "https://www.amazon.com/dp/B07QSFHT27",
-  "brand": { "name": "PAVOI", "store_link": "https://www.amazon.com/stores/PAVOIJewelry/page/6D60F9B2-5B35-4871-AEF7-73C2BF359213" },
-  "price": { "amount": 13.45, "currency": "USD", "list_price": null },
-  "availability": { "text": "In Stock", "is_in_stock": true },
-  "buybox": {
-    "seller": { "name": "PAVOI Jewelry", "id": "A1H1EU8178QTRH", "link": "https://www.amazon.com/sp?seller=A1H1EU8178QTRH" },
-    "is_fulfilled_by_amazon": false
-  },
-  "rating": { "average": 4.4, "count": 18151, "histogram": { "5_star": 71, "4_star": 12, "3_star": 8, "2_star": 3, "1_star": 6 } },
-  "bought_past_month": 3000,
-  "best_sellers_rank": [
-    { "rank": 6, "category": "Women's Pendant Necklaces", "link": "https://www.amazon.com/gp/bestsellers/fashion/7454934011" }
-  ],
-  "details": { "material": "Yellow Gold", "metal_type": "14k gold plated", "date_first_available": "April 18, 2019" },
-  "images": [{ "link": "https://m.media-amazon.com/images/I/61n6j7tPrvL._AC_SL1500_.jpg", "variant": "MAIN" }],
-  "variations": { "parent_asin": "B0F48ZYTDC", "count": 5 },
-  "customers_say": {
-    "summary": "Customers love this necklace for its high-shine CZ stone that maintains its sparkle over time, and appreciate its simple design.",
-    "aspects": [{ "name": "quality", "sentiment": "positive", "mentions": 819, "mentions_percentage": 79 }]
-  },
-  "top_reviews": [
-    { "id": "ROM1ZNS2SXNC3", "title": "Beautiful Quality Doesnt Tarnish", "rating": 5.0, "date": "2026-09-03", "is_verified_purchase": true }
-  ]
-}
-```
-
-*Trimmed for readability.*
-
 ## 🚀 Unlimited Free Amazon Data — Get It in 60 Seconds
 
 1️⃣ Clone and install:
@@ -83,6 +42,47 @@ curl "http://localhost:8000/products/details?product=B07QSFHT27"
 ```
 
 All 21 endpoints are now live at `http://localhost:8000`.
+
+## ✨ What Can I Get?
+
+- 🛍️ **Full details on any product in 23 marketplaces** — price, seller, stock, delivery, specs, images, variants & AI review summary
+- 🔍 **Search & browse every category** — sort by price, reviews or best sellers; filter by brand, Prime, rating & deals
+- 🏆 **Top 100 Best Sellers in every category** — plus New Releases, Movers & Shakers, Most Wished For & Today's Deals
+- 🏪 **Offers, sellers & influencers** — every seller's offer, seller ratings & feedback, influencer storefronts
+
+## 🎥 Example: A Full Amazon Product
+
+```json
+{
+  "asin": "B07QSFHT27",
+  "title": "PAVOI 14K Gold Plated Crystal Solitaire 1.5 Carat (7.3mm) Cubic Zirconia Dainty Choker Necklace | Gold Necklaces for Women",
+  "link": "https://www.amazon.com/dp/B07QSFHT27",
+  "brand": { "name": "PAVOI", "store_link": "https://www.amazon.com/stores/PAVOIJewelry/page/6D60F9B2-5B35-4871-AEF7-73C2BF359213" },
+  "price": { "amount": 13.45, "currency": "USD", "list_price": null },
+  "availability": { "text": "In Stock", "is_in_stock": true },
+  "buybox": {
+    "seller": { "name": "PAVOI Jewelry", "id": "A1H1EU8178QTRH", "link": "https://www.amazon.com/sp?seller=A1H1EU8178QTRH" },
+    "is_fulfilled_by_amazon": false
+  },
+  "rating": { "average": 4.4, "count": 18151, "histogram": { "5_star": 71, "4_star": 12, "3_star": 8, "2_star": 3, "1_star": 6 } },
+  "bought_past_month": 3000,
+  "best_sellers_rank": [
+    { "rank": 6, "category": "Women's Pendant Necklaces", "link": "https://www.amazon.com/gp/bestsellers/fashion/7454934011" }
+  ],
+  "details": { "material": "Yellow Gold", "metal_type": "14k gold plated", "date_first_available": "April 18, 2019" },
+  "images": [{ "link": "https://m.media-amazon.com/images/I/61n6j7tPrvL._AC_SL1500_.jpg", "variant": "MAIN" }],
+  "variations": { "parent_asin": "B0F48ZYTDC", "count": 5 },
+  "customers_say": {
+    "summary": "Customers love this necklace for its high-shine CZ stone that maintains its sparkle over time, and appreciate its simple design.",
+    "aspects": [{ "name": "quality", "sentiment": "positive", "mentions": 819, "mentions_percentage": 79 }]
+  },
+  "top_reviews": [
+    { "id": "ROM1ZNS2SXNC3", "title": "Beautiful Quality Doesnt Tarnish", "rating": 5.0, "date": "2026-09-03", "is_verified_purchase": true }
+  ]
+}
+```
+
+*Trimmed for readability.*
 
 ## ⚡ Try It in 60s Without Installing
 
