@@ -3,7 +3,8 @@
     domain          the storefront host (www.<domain>)
     marketplace_id  Amazon's obfuscated marketplace id (autocomplete `mid`,
                     the data.amazon.* product API path, seller feedback ajax)
-    language        the storefront's default locale (`lc-main` cookie)
+    language        the storefront's default locale (the `lc-<suffix>` cookie,
+                    see locale_cookie(); Accept-Language follows it)
     currency        ISO code the storefront prices in
     fingerprint     curl_cffi impersonation that passes the product-page
                     bot check from a non-local exit (validated 2026-09-22:
@@ -80,6 +81,37 @@ COUNTRIES = tuple(SITES)
 # apex and the smile./m. subdomains)
 _DOMAIN_TO_COUNTRY = {row["domain"]: code for code, row in SITES.items()}
 
+# The completion service runs one backend per Amazon region and each only
+# answers its own marketplace ids (a foreign `mid` gets 200 + empty list).
+# completion.<tld> is a CloudFront alias of these; when it breaks
+# (completion.amazon.in 502s since 2026-09) the regional host still serves.
+_COMPLETION_REGION_HOST = dict(
+    {code: "completion.amazon.com" for code in ("US", "CA", "MX", "BR")},
+    **{code: "completion.amazon.co.jp" for code in ("JP", "SG", "AU")})
+
+
+def locale_cookie(site_row):
+    """Name of the cookie that holds the storefront language. Each
+    marketplace has its own suffix (seen on its session cookies:
+    ubid-acbde, sst-acbde, lc-acbde on amazon.de); only amazon.com uses
+    `lc-main`, and the UK is `acbuk` rather than its ISO code. A cookie
+    under any other name is ignored and the store picks the language from
+    Accept-Language instead (verified for all 23 marketplaces 2026-10-16)."""
+    code = site_row["country"]
+    if code == "US":
+        return "lc-main"
+    return "lc-acb" + ("uk" if code == "GB" else code.lower())
+
+
+def accept_language(locale):
+    """'de_DE' -> 'de-DE,de;q=0.9,en;q=0.5' (the storefront honours it when
+    the locale cookie is missing or reset, e.g. after a captcha)."""
+    lang, _, region = (locale or "en_US").partition("_")
+    tag = f"{lang}-{region}" if region else lang
+    if lang == "en":
+        return f"{tag},en;q=0.9"
+    return f"{tag},{lang};q=0.9,en;q=0.5"
+
 
 def site(country=None):
     """The marketplace row for an ISO country code (US when None)."""
@@ -90,7 +122,8 @@ def site(country=None):
     if row is None:
         raise ValueError(f"country must be one of: {', '.join(COUNTRIES)}")
     return dict(row, country=code, host=f"www.{row['domain']}", base=f"https://www.{row['domain']}",
-                data_host=f"data.{row['domain']}", completion_host=f"completion.{row['domain']}")
+                data_host=f"data.{row['domain']}", completion_host=f"completion.{row['domain']}",
+                completion_region_host=_COMPLETION_REGION_HOST.get(code, "completion.amazon.co.uk"))
 
 
 def country_for_host(host):

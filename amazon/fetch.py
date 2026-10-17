@@ -32,8 +32,28 @@ Surfaces (each returns text or parsed JSON and raises the taxonomy below):
                                        every call succeeds (measured)
   completion(country, params)          completion.amazon.<tld> suggestions
 
-Blocks (captcha / 503 dogs / empty 202) are handled per thread: the
-session is thrown away and rebuilt; if the rebuilt session is blocked too
+  5. LANGUAGE — the storefront language is the per-marketplace cookie
+     `lc-acb<cc>` (`lc-main` only on amazon.com, sites.locale_cookie) plus
+     a matching Accept-Language. Until 2026-10-16 every store got `lc-main`
+     (ignored outside .com) and an English header, so foreign exits saw
+     English pages whatever `language` asked for.
+  6. CURRENT USER-AGENT — curl_cffi's impersonations still announce Safari
+     17.0 / Chrome 124. Since ~2026-10 Amazon treats those as stale bots:
+     product pages answer the click-through below first and the "Deliver
+     to" modal renders sign-in only (no postcode field), so the location
+     change silently failed and prices went missing for items that do not
+     ship to the exit's country. USER_AGENTS sends a current version over
+     the same TLS fingerprint (measured: no click-through, postcode modal,
+     isAddressUpdated 1).
+  7. CLICK-THROUGH — since ~2026-10 most product requests first answer a
+     3.8 KB "Klicke auf die Schaltfläche unten" page: a GET form to
+     /errors_page/validateCaptcha (amzn, amzn-r, field-keywords) with no
+     image to solve. Submitting it sets x-amz-captcha-1/2 and the same
+     session then gets real pages (measured from direct, US, DE, GB exits).
+
+Blocks (image captcha / 503 dogs / AWS WAF 202 JavaScript challenge) are
+handled per thread: the session is thrown away and rebuilt; if the rebuilt
+session is blocked too
 the thread moves that marketplace to a residential exit (config.
 amazon_fallback_proxy) for AMAZON_DIRECT_COOLDOWN seconds. Marketplaces
 that never answer foreign exits (sites.py `exit_country`: JP, AU) always
@@ -68,6 +88,24 @@ from scraper_errors import BadRequest, Blocked, NotFound, UpstreamError
 TIMEOUT = 45
 RETRIES = 2                    # transport failures / 5xx per call
 BLOCK_RETRIES = 4              # fresh session, then fallback exit(s)
+CLICK_THROUGHS = 2             # "continue shopping" submits per call before it counts as a block
+
+# User-Agent per curl_cffi fingerprint (sites.py `fingerprint`): a current
+# browser version over the fingerprint's TLS. Bump when Amazon starts
+# answering the click-through / sign-in-only glow modal again.
+USER_AGENTS = {
+    "safari17_0": {
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                      "Version/26.0 Safari/605.1.15",
+    },
+    "chrome": {
+        "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/155.0.0.0 Safari/537.36",
+        "sec-ch-ua": '"Google Chrome";v="155", "Chromium";v="155", "Not_A Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+    },
+}
 FANOUT_WORKERS = 6
 
 PAGE_HEADERS = {
@@ -84,6 +122,8 @@ _POW_RE = re.compile(r'var i = (\d+); var j = i \+ Number\("(\d+)" \+ "(\d+)"\)'
 _POW_TOKEN_RE = re.compile(r'"bm-verify": "([^"]+)"')
 _GLOW_TOKEN_RE = re.compile(r'anti-csrftoken-a2z(?:&quot;|"):(?:&quot;|")([^&"]+)')
 _MODAL_TOKEN_RE = re.compile(r'CSRF_TOKEN\s*:\s*"([^"]+)"')
+_CLICK_FORM_RE = re.compile(r'<form[^>]*action="(/errors[^"]*/validateCaptcha)"[^>]*>(.*?)</form>', re.S | re.I)
+_HIDDEN_RE = re.compile(r'<input[^>]*type="hidden"[^>]*name="([^"]+)"[^>]*value="([^"]*)"', re.I)
 
 
 class AmazonUpstreamError(UpstreamError):
@@ -121,17 +161,42 @@ class _Session:
         if proxy:
             self.curl.proxies = {"http": proxy, "https": proxy}
         # Display currency + language are cookies, not the exit's geo: without
-        # them a session from India sees every .com price converted to INR.
-        domain = "." + site["domain"]
-        self.curl.cookies.set("i18n-prefs", site["currency"], domain=domain)
-        self.curl.cookies.set("lc-main", language or site["language"], domain=domain)
+        # them a session from India sees every .com price converted to INR,
+        # and a US exit sees amazon.de in English.
+        self.domain = "." + site["domain"]
+        self.language = language or site["language"]
+        self.locale_cookie = sites.locale_cookie(site)
+        self.accept_language = sites.accept_language(self.language)
+        self.curl.cookies.set("i18n-prefs", site["currency"], domain=self.domain)
+        self.curl.cookies.set(self.locale_cookie, self.language, domain=self.domain)
         self.site = site
         self.proxy = proxy
-        self.language = language or site["language"]
         self.warmed = False
         self.located = None          # the postal code the session shops from
         self.pow_solved = 0
         self.glow_token = None
+
+    def headers(self, base):
+        """`base` with this session's Accept-Language and User-Agent."""
+        out = dict(base)
+        out.update(USER_AGENTS.get(self.site["fingerprint"], {}))
+        out["accept-language"] = self.accept_language
+        return out
+
+    def keep_language(self):
+        """Put the locale cookie back when a response rewrote it (Amazon
+        sets lc-acb<cc> from Accept-Language on the first real page and
+        after a captcha). Set-Cookie lands on the bare host while ours sits
+        on the dot-domain, so every copy is replaced."""
+        jar = self.curl.cookies.jar
+        stale = [c for c in jar if c.name == self.locale_cookie and c.value != self.language]
+        for c in stale:
+            try:
+                jar.clear(c.domain, c.path, c.name)
+            except KeyError:
+                pass
+        if stale or not any(c.name == self.locale_cookie for c in jar):
+            self.curl.cookies.set(self.locale_cookie, self.language, domain=self.domain)
 
     def close(self):
         try:
@@ -221,14 +286,28 @@ def is_signin(url):
     return "/ap/signin" in (url or "")
 
 
+def is_click_through(text):
+    """The "continue shopping" captcha: a button-only form, no image."""
+    return "validateCaptcha" in text and "captchacharacters" not in text and len(text) < 20000 \
+        and _CLICK_FORM_RE.search(text) is not None
+
+
+def is_waf_challenge(resp):
+    """CloudFront / AWS WAF JavaScript challenge (202, ~2 KB, gokuProps +
+    challenge.js). Needs a browser-minted aws-waf-token; a fresh session
+    usually is not challenged."""
+    text = resp.text or ""
+    return resp.status_code == 202 and ("gokuProps" in text or "awsWafCookieDomainList" in text or len(text) < 2000)
+
+
 def _blocked_reason(resp):
     text = resp.text or ""
     if resp.status_code == 503 and (is_dogs(text) or len(text) < 3000):
         return "503 dogs page"
     if is_captcha(text):
         return "captcha"
-    if resp.status_code == 202 and len(text) < 2000:
-        return "202 bot check"
+    if is_waf_challenge(resp):
+        return "202 AWS WAF challenge"
     return None
 
 
@@ -236,18 +315,43 @@ def _blocked_reason(resp):
 
 def _warm(sess):
     """Homepage GET for the session cookies (+ the glow token for the
-    delivery-location change). A blocked warm-up raises AmazonBlocked so
-    the caller rotates the session."""
+    delivery-location change). The homepage now mostly answers the 2 KB WAF
+    challenge (no cookies, harmless: the product pages are not challenged)
+    or the click-through (submitted here); a dogs page / image captcha
+    raises AmazonBlocked so the caller rotates the session."""
     if sess.warmed:
         return
-    resp = sess.curl.get(sess.site["base"] + "/", headers=PAGE_HEADERS)
-    reason = _blocked_reason(resp)
-    if reason:
-        raise AmazonBlocked(f"warm-up on {sess.site['host']}: {reason}")
+    resp = sess.curl.get(sess.site["base"] + "/", headers=sess.headers(PAGE_HEADERS))
+    if is_click_through(resp.text or ""):
+        click_through(sess, resp)
+    elif not is_waf_challenge(resp):
+        reason = _blocked_reason(resp)
+        if reason:
+            raise AmazonBlocked(f"warm-up on {sess.site['host']}: {reason}")
     sess.warmed = True
+    sess.keep_language()
     match = _GLOW_TOKEN_RE.search(resp.text or "")
     if match:
         sess.glow_token = match.group(1)
+
+
+def click_through(sess, resp):
+    """Submit the "continue shopping" form (GET /errors_page/validateCaptcha
+    with its hidden fields) on `sess`. True when Amazon accepted it (it
+    redirects and sets x-amz-captcha-1/2); the caller then repeats its
+    request on the same session."""
+    import html as html_lib
+    match = _CLICK_FORM_RE.search(resp.text or "")
+    if not match:
+        return False
+    fields = {name: html_lib.unescape(value) for name, value in _HIDDEN_RE.findall(match.group(2))}
+    try:
+        answer = sess.curl.get(sess.site["base"] + match.group(1), params=fields,
+                               headers={**sess.headers(PAGE_HEADERS), "referer": str(resp.url)}, allow_redirects=False)
+    except Exception:
+        return False
+    sess.keep_language()
+    return answer.status_code in (200, 301, 302, 303) and not is_captcha(answer.text or "")
 
 
 def _solve_pow(sess, text):
@@ -259,7 +363,7 @@ def _solve_pow(sess, text):
     pow_value = int(match.group(1)) + int(match.group(2) + match.group(3))
     resp = sess.curl.post(sess.site["base"] + "/_sec/verify?provider=interstitial",
                           json={"bm-verify": token.group(1), "pow": pow_value},
-                          headers={**PAGE_HEADERS, "content-type": "application/json", "origin": sess.site["base"]})
+                          headers={**sess.headers(PAGE_HEADERS), "content-type": "application/json", "origin": sess.site["base"]})
     sess.pow_solved += 1
     return resp.status_code == 200
 
@@ -277,7 +381,7 @@ def set_location(sess, postal_code=None):
     base = sess.site["base"]
     ok = False
     try:
-        headers = {**AJAX_HEADERS, "anti-csrftoken-a2z": sess.glow_token, "referer": base + "/"}
+        headers = {**sess.headers(AJAX_HEADERS), "anti-csrftoken-a2z": sess.glow_token, "referer": base + "/"}
         resp = sess.curl.get(base + "/portal-migration/hz/glow/get-rendered-address-selections",
                              params={"deviceType": "desktop", "pageType": "Detail", "storeContext": "generic",
                                      "actionSource": "desktop-modal"},
@@ -326,12 +430,13 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
     attempt = 0
     blocks = 0
     relocated = False
+    clicks = 0
     while True:
         sess = session(country, purpose, language)
         try:
             if purpose == "page":
                 _warm(sess)
-            hdrs = dict(headers or PAGE_HEADERS)
+            hdrs = sess.headers(headers or PAGE_HEADERS)
             hdrs.setdefault("referer", _referer(site, referer))
             resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body, headers=hdrs,
                                      allow_redirects=allow_redirects)
@@ -339,6 +444,14 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
                 if _solve_pow(sess, resp.text):
                     resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body,
                                              headers=hdrs, allow_redirects=allow_redirects)
+            while purpose != "aapi" and clicks < CLICK_THROUGHS and is_click_through(resp.text or ""):
+                clicks += 1
+                if not click_through(sess, resp):
+                    break
+                resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body,
+                                         headers=hdrs, allow_redirects=allow_redirects)
+            if purpose != "aapi":
+                sess.keep_language()
             reason = _blocked_reason(resp)
             if reason is None and purpose == "page" and is_pow(resp.text or ""):
                 reason = "unsolved bm-verify interstitial"   # never hand the 2 KB stub to a parser
@@ -494,7 +607,8 @@ def completion(country, params):
              "event": "onKeyPress", "wc": "", "lop": site["language"], "client-info": "amazon-search-ui"}
     query.update(params)
     last = None
-    for host in (site["completion_host"], "completion.amazon.com"):
+    hosts = dict.fromkeys((site["completion_host"], site["completion_region_host"]))
+    for host in hosts:
         try:
             resp = _request(country, "GET", f"https://{host}/api/2017/suggestions", params=query,
                             headers={"accept": "application/json", "accept-language": "en-US,en;q=0.9"},
@@ -503,7 +617,7 @@ def completion(country, params):
         except (AmazonUpstreamError, ValueError) as e:
             last = e if isinstance(e, AmazonUpstreamError) else AmazonUpstreamError(f"suggestions on {host}: non-JSON body")
             continue
-        if body.get("suggestions") or host == "completion.amazon.com":
+        if body.get("suggestions") or host == site["completion_region_host"]:
             return body
         last = body
     if isinstance(last, dict):

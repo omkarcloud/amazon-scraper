@@ -287,3 +287,47 @@ def test_parsers_never_crash_on_empty_pages():
         assert isinstance(fn("<html></html>", US), dict)
     assert P.influencer_page("<html></html>", US, "x")["posts"] == []
     assert P.bestsellers_acp_page("", US) == []
+
+
+# ---- amazon.de (2026-10-16 fixes) -----------------------------------------------------------------------------
+
+DE = sites.site("DE")
+
+
+def test_locale_cookie_and_accept_language():
+    # the language cookie is per marketplace; only amazon.com uses lc-main
+    assert sites.locale_cookie(sites.site("US")) == "lc-main"
+    assert sites.locale_cookie(DE) == "lc-acbde"
+    assert sites.locale_cookie(sites.site("GB")) == "lc-acbuk"
+    assert sites.locale_cookie(sites.site("JP")) == "lc-acbjp"
+    assert sites.accept_language("de_DE") == "de-DE,de;q=0.9,en;q=0.5"
+    assert sites.accept_language("en_GB") == "en-GB,en;q=0.9"
+
+
+def test_click_through_page_detected():
+    from amazon import fetch
+    page = raw("de_click_through.html")
+    assert fetch.is_click_through(page) and fetch.is_captcha(page)
+    form = fetch._CLICK_FORM_RE.search(page)
+    assert form.group(1) == "/errors_page/validateCaptcha"
+    assert {name for name, _ in fetch._HIDDEN_RE.findall(form.group(2))} == {"amzn", "amzn-r", "field-keywords"}
+    assert not fetch.is_click_through(raw("dp_B00939I7EK.html"))
+
+
+def test_product_page_de_rrp_and_unit_price():
+    # Berlin-located German page: price, UVP (strike) and the per-kg price,
+    # which precedes the UVP in the markup and used to be read as list_price
+    data = P.product_page(raw("de_dp_B0057ED9AM.html"), DE)
+    assert data["title"].startswith("ESN Ultrapure Creatine Monohydrate")
+    assert data["bullets"][0].startswith("Mit 3 g Kreatin")
+    price = data["price"]
+    assert price["currency"] == "EUR" and price["amount"] and price["unit_price"]["per"] == "kg"
+    assert price["list_price"] is None or price["list_price"] > price["amount"]
+    assert price["unit_price"]["amount"] == pytest.approx(price["amount"] * 2, rel=0.01)   # 500 g tub
+
+
+def test_product_page_de_subscribe_and_save():
+    # one-time price == "Einmaliger Preis" basis; the -5 % badge is the Spar-Abo price
+    price = P.product_page(raw("de_dp_B09JGFTTRX.html"), DE)["price"]
+    assert price["amount"] and price["list_price"] is None and price["savings_percent"] is None
+    assert price["unit_price"] == {"amount": price["amount"], "per": "kg"}   # 1 kg bag

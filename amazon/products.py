@@ -35,12 +35,41 @@ def _product_page(asin, site, locale, postal_code=None, want_reviews=False, atte
     return html
 
 
+def _looks_like_storefront(html):
+    """A full storefront page (nav bar + a real body) as opposed to a
+    challenge / interstitial / stub that slipped past the block checks."""
+    return len(html or "") > 100_000 and ('id="navbar' in html or 'id="nav-logo' in html)
+
+
+NO_TITLE_RETRIES = 2            # fresh sessions spent on a page that is neither a product nor a storefront page
+
+
+def _product_data(product, site, locale, postal_code=None, want_reviews=False, attempts=1):
+    """(html, parsed) of a product page. A page without a title that is not
+    a full storefront page either is a block the fetch layer did not
+    recognise (interstitial, challenge stub): it is retried on a fresh
+    session and finally raised as AmazonBlocked, never as a missing product
+    — a removed ASIN is Amazon's own HTTP 404 (fetch raises AmazonNotFound),
+    and a full page without a product title is the only "no product page"."""
+    html = _product_page(product, site, locale, postal_code, want_reviews=want_reviews, attempts=attempts)
+    data = P.product_page(html, site)
+    for _ in range(NO_TITLE_RETRIES):
+        if data.get("title") or _looks_like_storefront(html):
+            break
+        fetch.dump_debug(f"no_title_{product}", html)
+        fetch.drop_session(site["country"], "page", locale)
+        html = _product_page(product, site, locale, postal_code, want_reviews=want_reviews, attempts=attempts)
+        data = P.product_page(html, site)
+    if not data.get("title"):
+        if not _looks_like_storefront(html):
+            raise fetch.AmazonBlocked(f"product {product}: Amazon answered a bot-check page instead of the product (retry)")
+        raise fetch.AmazonNotFound(f"product {product}: no product page (unavailable or removed)")
+    return html, data
+
+
 def details(product, country=None, language=None, postal_code=None):
     site, locale = context(country, language)
-    html = _product_page(product, site, locale, postal_code, want_reviews=True, attempts=REVIEW_ATTEMPTS_DETAILS)
-    data = P.product_page(html, site)
-    if not data.get("title"):
-        raise fetch.AmazonNotFound(f"product {product}: no product page (unavailable or removed)")
+    _, data = _product_data(product, site, locale, postal_code, want_reviews=True, attempts=REVIEW_ATTEMPTS_DETAILS)
     data["asin"] = data.get("asin") or product
     data["link"] = P.product_link(site, data["asin"])
     return data
@@ -80,10 +109,7 @@ def offers(product, country=None, language=None, page=1, condition="all", prime_
 
 def variations(product, country=None, language=None):
     site, locale = context(country, language)
-    html = _product_page(product, site, locale)
-    data = P.product_page(html, site)
-    if not data.get("title"):
-        raise fetch.AmazonNotFound(f"product {product}: no product page")
+    _, data = _product_data(product, site, locale)
     block = data.get("variations") or {"parent_asin": None, "current_asin": data.get("asin"), "dimensions": [], "products": [], "count": 0}
     return {"asin": data.get("asin") or product, "title": data.get("title"), "link": data.get("link"), **block,
             "country": site["country"], "domain": site["host"]}
@@ -91,10 +117,7 @@ def variations(product, country=None, language=None):
 
 def reviews(product, country=None, language=None):
     site, locale = context(country, language)
-    html = _product_page(product, site, locale, want_reviews=True, attempts=REVIEW_ATTEMPTS_REVIEWS)
-    data = P.product_page(html, site)
-    if not data.get("title"):
-        raise fetch.AmazonNotFound(f"product {product}: no product page")
+    html, data = _product_data(product, site, locale, want_reviews=True, attempts=REVIEW_ATTEMPTS_REVIEWS)
     rows = data.get("top_reviews") or []
     return {
         "asin": data.get("asin") or product,
@@ -129,10 +152,7 @@ def bulk(products, country=None, language=None, postal_code=None):
     asins = list(dict.fromkeys(products))[:BULK_MAX]
 
     def one(asin):
-        html = _product_page(asin, site, locale, postal_code)
-        data = P.product_page(html, site)
-        if not data.get("title"):
-            raise fetch.AmazonNotFound("no product page")
+        _, data = _product_data(asin, site, locale, postal_code)
         data["asin"] = data.get("asin") or asin
         data["link"] = P.product_link(site, data["asin"])
         return _summary(data)

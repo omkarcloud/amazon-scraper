@@ -805,16 +805,57 @@ def _byline(doc, site):
     return brand, authors
 
 
+_UNIT_PRICE = ".pricePerUnit, #pricePerUnit, .apex-priceperunit-value"
+# "( 58,24€ / kg)", "58,24 € pro kg", "£1.20 per 100 g", "1,20 € par kg", "al kg", "por kg"
+_UNIT_PER_RE = re.compile(r"(?:/|\b(?:pro|per|par|al|por|je)\b)\s*([^()/]+?)\s*\)?\s*$", re.I)
+
+
+def _outside_unit_price(elements):
+    """The first price element that carries an amount and sits outside the
+    per-unit block ("58,24 € / kg" is an .a-text-price too and precedes the
+    strike-through list price). The 2026 apex layout also leaves an empty
+    `.a-offscreen` (one space) ahead of the real one: skipped."""
+    for el in elements:
+        if el.find_parent(class_=["pricePerUnit", "apex-priceperunit-value"]) is not None or el.find_parent(id="pricePerUnit") is not None:
+            continue
+        if amount_of(text(el)) is not None:
+            return el
+    return None
+
+
+def _unit_price(scope):
+    """{amount, per} from the per-unit block: its .a-offscreen holds the
+    amount, the text ends in "/ kg)" (also "pro kg ( … / kg)" on .de)."""
+    block = first(scope, _UNIT_PRICE)
+    if block is None:
+        return None
+    holder = block.find_parent(class_="pricePerUnit") or block
+    amount_el = first(holder, ".a-offscreen")
+    amount = amount_of(text(amount_el)) if amount_el is not None else None
+    match = _UNIT_PER_RE.search(text(holder) or "")
+    if amount is None and match:
+        head = (text(holder) or "")[:match.start()]
+        numbers = re.findall(r"\d[\d.,\s]*\d|\d", head)
+        amount = amount_of(numbers[-1]) if numbers else None
+    if amount is None or not match:
+        return None
+    return {"amount": amount, "per": clean(match.group(1))}
+
+
 def _price(doc, currency):
     scopes = [first(doc, sel) for sel in ("#apex_desktop", "#corePriceDisplay_desktop_feature_div", "#corePrice_feature_div",
                                           "#corePrice_desktop", "#price", "#buybox")]
     scopes = [sc for sc in scopes if sc is not None]
     current = strike = scope = None
     for scope in scopes:
-        current = first(scope, ".priceToPay .a-offscreen, .apexPriceToPay .a-offscreen, .a-price:not([data-a-strike=true]) .a-offscreen") \
-            or first(scope, ".aok-offscreen")
+        current = _outside_unit_price(scope.select(
+            ".priceToPay .a-offscreen, .apexPriceToPay .a-offscreen, .a-price:not([data-a-strike=true]) .a-offscreen")) \
+            or _outside_unit_price(scope.select(".priceToPay .aok-offscreen, .apexPriceToPay .aok-offscreen, .aok-offscreen"))
         if current is not None and amount_of(text(current)) is not None:
-            strike = first(scope, ".basisPrice .a-offscreen, [data-a-strike=true] .a-offscreen, .a-text-price .a-offscreen")
+            # strike-through / RRP ("UVP", "Prix conseillé", "List Price"), never the per-unit price
+            strike = _outside_unit_price(scope.select(".basisPrice .a-offscreen")) \
+                or _outside_unit_price(scope.select("[data-a-strike=true] .a-offscreen")) \
+                or _outside_unit_price(scope.select(".a-text-price .a-offscreen"))
             break
         current = None
     if scope is None:
@@ -823,13 +864,15 @@ def _price(doc, currency):
     if block is None:
         block = {"amount": None, "currency": currency}
     block["list_price"] = amount_of(text(strike)) if strike is not None else None
-    savings = first_text(scope, ".savingsPercentage")
+    if block["list_price"] is not None and block.get("amount") is not None and block["list_price"] <= block["amount"]:
+        # Subscribe & Save layout: the "one-time price" basis equals the price and
+        # the -5 % badge belongs to the subscription price, not to this offer
+        block["list_price"] = None
+    savings = first_text(scope, ".savingsPercentage") if block["list_price"] is not None or block.get("amount") is None else None
     block["savings_percent"] = abs(percent_of(savings)) if savings and percent_of(savings) is not None else (
         round((1 - block["amount"] / block["list_price"]) * 100) if block.get("amount") and block.get("list_price") and block["list_price"] > block["amount"] else None)
     block["savings_amount"] = round(block["list_price"] - block["amount"], 2) if block.get("amount") and block.get("list_price") and block["list_price"] > block["amount"] else None
-    unit = first_text(scope, ".pricePerUnit, #pricePerUnit") or ""
-    match = re.search(r"\(?\s*([^()/]*?\d[^()/]*?)\s*/\s*([^()]+?)\s*\)?$", unit)
-    block["unit_price"] = {"amount": amount_of(match.group(1)), "per": clean(match.group(2))} if match else None
+    block["unit_price"] = _unit_price(scope)
     if block["amount"] is None and block["list_price"] is None:
         return None
     return block

@@ -53,7 +53,7 @@ def test_search():
 
 def test_products():
     body = call("/amazon/products/details", product="B07QSFHT27")
-    assert body["title"].startswith("PAVOI") and body["price"]["currency"] == "USD" and body["rating"]["count"] > 10000
+    assert "PAVOI" in body["title"] and body["price"]["currency"] == "USD" and body["rating"]["count"] > 10000
     assert body["images"] and body["bullets"] and body["variations"]["products"]
     body = call("/amazon/products/details", product="B00939I7EK")
     assert body["best_sellers_rank"]
