@@ -375,3 +375,36 @@ def test_fallback_render_detection():
     assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=200, headers={}, text="<html>" + "x" * 2_000))
     assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=200, headers={}, text="{" + "x" * 60_000))
     assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=503, headers={}, text=html))
+
+
+def test_egress_policy_datacenter_first_then_residential_for_good(monkeypatch):
+    from types import SimpleNamespace
+    from amazon import fetch, sites
+
+    monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "datacenter")
+    monkeypatch.setattr(fetch.config, "AMAZON_DATACENTER_FAILURES", 2)
+    monkeypatch.setattr(fetch.config, "AMAZON_PROXY_COUNTRY", None)
+    monkeypatch.setattr(fetch.config, "amazon_datacenter_proxy", lambda: "http://dc", raising=False)
+    monkeypatch.setattr(fetch.config, "amazon_fallback_proxy", lambda c: f"http://resi-{c.lower()}")
+    monkeypatch.setattr(fetch.config, "amazon_country_proxy", lambda c: f"http://pinned-{c.lower()}")
+    monkeypatch.setattr(fetch, "_dc_failures", {})
+    monkeypatch.setattr(fetch, "_residential", set())
+    de, us, jp = sites.site("DE"), sites.site("US"), sites.site("JP")
+
+    assert fetch._proxy_for(de) == ("http://dc", "datacenter")          # never the pod's own IP
+    assert fetch._proxy_for(jp) == ("http://pinned-jp", "residential")   # refuses foreign exits: pinned
+    dc_sess = SimpleNamespace(site=de, egress="datacenter", proxy="http://dc")
+    fetch._note_failure(dc_sess, "captcha")
+    assert fetch._proxy_for(de) == ("http://dc", "datacenter")          # one failure: fresh DC exit
+    fetch._note_failure(dc_sess, "edge fallback render")
+    assert fetch._proxy_for(de) == ("http://resi-de", "residential")     # second: residential, for good
+    assert fetch._proxy_for(us) == ("http://dc", "datacenter")          # other marketplaces unaffected
+    resi_sess = SimpleNamespace(site=de, egress="residential", proxy="http://resi-de")
+    for _ in range(5):
+        fetch._note_failure(resi_sess, "503 dogs page")                  # nowhere further to go
+    assert fetch._proxy_for(de) == ("http://resi-de", "residential")
+
+    monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "residential")
+    assert fetch._proxy_for(us) == ("http://resi-us", "residential")
+    monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "direct")
+    assert fetch._proxy_for(us) == (None, "direct")                      # the open-source default

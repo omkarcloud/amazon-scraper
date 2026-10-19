@@ -51,13 +51,16 @@ Surfaces (each returns text or parsed JSON and raises the taxonomy below):
      image to solve. Submitting it sets x-amz-captcha-1/2 and the same
      session then gets real pages (measured from direct, US, DE, GB exits).
 
-Blocks (image captcha / 503 dogs / AWS WAF 202 JavaScript challenge) are
-handled per thread: the session is thrown away and rebuilt; if the rebuilt
-session is blocked too
-the thread moves that marketplace to a residential exit (config.
-amazon_fallback_proxy) for AMAZON_DIRECT_COOLDOWN seconds. Marketplaces
-that never answer foreign exits (sites.py `exit_country`: JP, AU) always
-run through an exit pinned to their country.
+Egress (config.AMAZON_EGRESS, 2026-10-19): a new session rides a sticky
+DataImpulse DATACENTER exit — never the process's own IP in production
+(the pod's IP got Amazon's price-less edge fallback render under bursts).
+Blocks (image captcha / 503 dogs / AWS WAF 202 / edge fallback render) and
+transport errors throw the session away; AMAZON_DATACENTER_FAILURES of them
+on a marketplace (process-wide) move that marketplace to residential exits
+in its own country (config.amazon_fallback_proxy) for good, until restart
+(_note_failure). Marketplaces that never answer foreign exits (sites.py
+`exit_country`: JP, AU) always run through a residential exit pinned to
+their country.
 
 FALLBACK HOOK: if Amazon ever starts serving a JavaScript challenge that
 no fingerprint passes, escalate the way g2 does — a patchright pool with
@@ -145,15 +148,17 @@ class AmazonNotFound(NotFound):
 # ---- per-thread sessions ------------------------------------------------------------------
 
 _local = threading.local()
-_fallback_lock = threading.Lock()
-_fallback_until = {}    # (thread ident, country) -> time direct egress may be retried
+_egress_lock = threading.Lock()
+_dc_failures = {}       # country -> failures seen on the datacenter / direct egress (process-wide)
+_residential = set()    # countries moved to residential exits for good (until restart)
 
 
 class _Session:
     """One curl_cffi session plus the per-session state the tricks need."""
 
-    def __init__(self, site, proxy, http1=False, language=None):
+    def __init__(self, site, proxy, http1=False, language=None, egress="direct"):
         from curl_cffi import requests as curl_requests
+        self.egress = egress         # "datacenter" | "residential" | "direct" (see _proxy_for)
         kwargs = {"impersonate": site["fingerprint"], "timeout": TIMEOUT}
         if http1:
             kwargs["http_version"] = 1
@@ -212,27 +217,49 @@ def _store():
     return store
 
 
-def _on_fallback(country):
-    until = _fallback_until.get((threading.get_ident(), country), 0.0)
-    return bool(until) and time.time() < until
-
-
-def _enter_fallback(country):
-    with _fallback_lock:
-        _fallback_until[(threading.get_ident(), country)] = time.time() + config.AMAZON_DIRECT_COOLDOWN
-
-
 def _proxy_for(site):
-    """The exit a NEW session for `site` should use: a pinned country exit
-    for storefronts that refuse foreign IPs, the configured global exit,
-    the thread's fallback exit while its cooldown runs, else direct."""
+    """(proxy, egress) for a NEW session of `site`, per config.AMAZON_EGRESS:
+    a residential exit pinned to the country for storefronts that refuse
+    foreign IPs, the AMAZON_PROXY_COUNTRY override, else a datacenter exit
+    until the marketplace has been moved to residential for good
+    (_note_failure), then a residential exit in the marketplace's country.
+    Direct egress only when AMAZON_EGRESS is "direct" (or no residential
+    exit is configured for a moved marketplace)."""
+    country = site["country"]
     if site["exit_country"]:
-        return config.amazon_country_proxy(site["exit_country"])
+        return config.amazon_country_proxy(site["exit_country"]), "residential"
     if config.AMAZON_PROXY_COUNTRY:
-        return config.amazon_country_proxy(config.AMAZON_PROXY_COUNTRY)
-    if _on_fallback(site["country"]):
-        return config.amazon_fallback_proxy(site["country"])
-    return None
+        return config.amazon_country_proxy(config.AMAZON_PROXY_COUNTRY), "residential"
+    egress = config.AMAZON_EGRESS
+    if egress == "datacenter" and country not in _residential:
+        return config.amazon_datacenter_proxy(), "datacenter"
+    if egress in ("datacenter", "residential") or country in _residential:
+        proxy = config.amazon_fallback_proxy(country)
+        if proxy:
+            return proxy, "residential"
+        if egress == "datacenter":
+            return config.amazon_datacenter_proxy(), "datacenter"
+    return None, "direct"
+
+
+def _note_failure(sess, reason):
+    """A block / fallback render / transport error on a session: counted per
+    marketplace while it still runs on the datacenter (or direct) egress;
+    at config.AMAZON_DATACENTER_FAILURES the marketplace moves to residential
+    exits permanently (until restart). Failures on residential exits or on
+    a country-pinned storefront change nothing (there is nowhere further to
+    go); its session is simply replaced."""
+    country = sess.site["country"]
+    if sess.egress == "residential" or sess.site["exit_country"] or country in _residential:
+        return
+    if not config.amazon_fallback_proxy(country):
+        return
+    with _egress_lock:
+        _dc_failures[country] = _dc_failures.get(country, 0) + 1
+        if _dc_failures[country] >= config.AMAZON_DATACENTER_FAILURES and country not in _residential:
+            _residential.add(country)
+            print(f"amazon {country}: {_dc_failures[country]} failures on the {sess.egress} egress "
+                  f"(last: {reason}); moving this marketplace to residential exits for good")
 
 
 def session(country, purpose="page", language=None):
@@ -245,7 +272,8 @@ def session(country, purpose="page", language=None):
     store = _store()
     sess = store.get(key)
     if sess is None:
-        sess = store[key] = _Session(site, _proxy_for(site), http1=(purpose == "aapi"), language=language)
+        proxy, egress = _proxy_for(site)
+        sess = store[key] = _Session(site, proxy, http1=(purpose == "aapi"), language=language, egress=egress)
     return sess
 
 
@@ -488,13 +516,8 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
             reason = str(e)
             resp = None
         except Exception as e:
-            proxied = sess.proxy is not None
+            _note_failure(sess, f"{type(e).__name__}: {e}")
             drop_session(country, purpose, language)
-            if proxied and not site["exit_country"] and _on_fallback(site["country"]):
-                # the fallback exit itself is failing (e.g. proxy auth 407):
-                # leave the fallback and go back to direct egress
-                with _fallback_lock:
-                    _fallback_until.pop((threading.get_ident(), site["country"]), None)
             attempt += 1
             if attempt > RETRIES:
                 raise AmazonUpstreamError(f"{label}: {type(e).__name__}: {e}")
@@ -502,11 +525,10 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
             continue
         if reason:
             blocks += 1
+            _note_failure(sess, reason)
             drop_session(country, purpose, language)
             if blocks >= BLOCK_RETRIES:
                 raise AmazonBlocked(f"{label}: {reason} (after {blocks} sessions)")
-            if blocks >= 2 and not site["exit_country"] and config.amazon_fallback_proxy(site["country"]):
-                _enter_fallback(site["country"])
             time.sleep(1.5 * blocks)     # the 503 dogs page is mostly a burst limiter: back off
             continue
         if resp.status_code == 404:

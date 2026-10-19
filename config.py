@@ -27,11 +27,21 @@ AMAZON_PROXY = os.environ.get("AMAZON_PROXY") or None
 # With a proxy set, every session goes through it (the package asks for a
 # per-country exit; one proxy serves them all). Without it: direct.
 AMAZON_PROXY_COUNTRY = "any" if AMAZON_PROXY else None
-AMAZON_DIRECT_COOLDOWN = 300   # seconds a blocked marketplace stays on the proxy
+# Where a new session's traffic leaves from when no AMAZON_PROXY is set:
+# "direct" = this machine's own IP. ("datacenter" / "residential" name the
+# two exit pools the hosted service runs on; with AMAZON_PROXY they all
+# resolve to that one proxy.)
+AMAZON_EGRESS = "direct"
+AMAZON_DATACENTER_FAILURES = 2   # failures before a marketplace moves to the fallback proxy for good
 
 
 def amazon_country_proxy(country):
     """The proxy for a session (None = direct)."""
+    return AMAZON_PROXY
+
+
+def amazon_datacenter_proxy():
+    """The datacenter exit (the hosted service's default); here AMAZON_PROXY."""
     return AMAZON_PROXY
 
 
