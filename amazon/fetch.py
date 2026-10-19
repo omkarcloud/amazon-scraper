@@ -311,6 +311,33 @@ def _blocked_reason(resp):
     return None
 
 
+FALLBACK_RENDER_HEADER = "x-edgex-ers-fallback-status"
+FALLBACK_MIN_BYTES = 50_000        # a full storefront page; fragments / stubs are judged elsewhere
+
+
+def is_fallback_render(sess, resp):
+    """Amazon's edge fallback: when the origin throttles an IP (bursts from
+    the pod's egress, 2026-10-19; a home IP never saw it) the CDN answers a
+    200 storefront page from its error-recovery path — header
+    `x-edgex-ers-fallback-status: success`, NO content-type, NO session
+    cookies — rendered for nobody: no delivery widget, the one-time price
+    replaced by "add this item to your cart to see details" (the Subscribe &
+    Save price still shows), no availability. ~1 in 5 fresh sessions at
+    normal load, every request during a burst, and a session that got it
+    keeps getting it. The caller treats it as a block (fresh session, then
+    the fallback exit, which renders fine meanwhile). Two signals, either
+    suffices: the header, or a full HTML page that left the jar without a
+    `session-id` (a real render always sets one on the first page)."""
+    if resp.status_code != 200:
+        return False
+    if resp.headers.get(FALLBACK_RENDER_HEADER):
+        return True
+    text = resp.text or ""
+    if len(text) < FALLBACK_MIN_BYTES or "<html" not in text[:4000].lower():
+        return False
+    return not any(c.name == "session-id" for c in sess.curl.cookies.jar)
+
+
 # ---- the tricks --------------------------------------------------------------------------------
 
 def _warm(sess):
@@ -455,6 +482,8 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
             reason = _blocked_reason(resp)
             if reason is None and purpose == "page" and is_pow(resp.text or ""):
                 reason = "unsolved bm-verify interstitial"   # never hand the 2 KB stub to a parser
+            if reason is None and purpose == "page" and is_fallback_render(sess, resp):
+                reason = "edge fallback render (origin throttled; price hidden)"
         except AmazonBlocked as e:
             reason = str(e)
             resp = None

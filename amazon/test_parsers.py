@@ -331,3 +331,47 @@ def test_product_page_de_subscribe_and_save():
     price = P.product_page(raw("de_dp_B09JGFTTRX.html"), DE)["price"]
     assert price["amount"] and price["list_price"] is None and price["savings_percent"] is None
     assert price["unit_price"] == {"amount": price["amount"], "per": "kg"}   # 1 kg bag
+
+
+def test_product_page_de_sessionless_render_hides_price():
+    # Amazon's degraded render (no session-id cookie): the one-time price is
+    # "add to cart to see", only the Spar-Abo (-15 %) price is in #buybox.
+    # It must not be reported as the buybox price (24.75 was, 2026-10-19).
+    data = P.product_page(raw("de_dp_B0057ED9AM_sessionless.html"), DE)
+    assert data["title"].startswith("ESN Ultrapure Creatine Monohydrate")   # title / bullets still parse
+    assert data["bullets"]
+    assert data["price"] is None and data["availability"] is None
+    data = P.product_page(raw("de_dp_B0G58MSZYD_sessionless.html"), DE)
+    assert data["title"].startswith("Vitamin D3 K2 Hevert") and data["price"] is None
+    # the good render of the same product still yields the one-time price (29.12), not the Spar-Abo one (24.75)
+    good = P.product_page(raw("de_dp_B0057ED9AM.html"), DE)["price"]
+    assert good["amount"] == 29.12
+
+
+def test_fallback_render_detection():
+    from types import SimpleNamespace
+    from amazon import fetch
+
+    class Cookie:
+        def __init__(self, name):
+            self.name = name
+
+    def sess(*names):
+        return SimpleNamespace(curl=SimpleNamespace(cookies=SimpleNamespace(jar=[Cookie(n) for n in names])))
+
+    html = "<!doctype html><html lang=de-de>" + "x" * 60_000
+    # the real thing: fallback header, no content-type, no session cookie
+    degraded = SimpleNamespace(status_code=200, headers={"x-edgex-ers-fallback-status": "success"}, text=html)
+    assert fetch.is_fallback_render(sess("ak_bmsc", "i18n-prefs", "lc-acbde"), degraded)
+    # header alone is enough, even if a cookie slipped in
+    assert fetch.is_fallback_render(sess("session-id"), degraded)
+    # no header, but a full page that opened no session
+    quiet = SimpleNamespace(status_code=200, headers={}, text=html)
+    assert fetch.is_fallback_render(sess("i18n-prefs", "lc-acbde"), quiet)
+    # normal render
+    good = SimpleNamespace(status_code=200, headers={"content-type": "text/html;charset=UTF-8"}, text=html)
+    assert not fetch.is_fallback_render(sess("i18n-prefs", "session-id", "ubid-acbde"), good)
+    # stubs / interstitials and JSON are judged elsewhere
+    assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=200, headers={}, text="<html>" + "x" * 2_000))
+    assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=200, headers={}, text="{" + "x" * 60_000))
+    assert not fetch.is_fallback_render(sess(), SimpleNamespace(status_code=503, headers={}, text=html))

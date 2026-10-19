@@ -810,13 +810,25 @@ _UNIT_PRICE = ".pricePerUnit, #pricePerUnit, .apex-priceperunit-value"
 _UNIT_PER_RE = re.compile(r"(?:/|\b(?:pro|per|par|al|por|je)\b)\s*([^()/]+?)\s*\)?\s*$", re.I)
 
 
+# Subscribe & Save ("Spar-Abo") block inside #buybox: its tiered price is the
+# subscription price (-15 %), never the one-time buybox price.
+_SNS_CLASSES = ["sns-tiered-price", "subscriptionPrice", "sns-base-price", "snsAccordionRowMiddle"]
+_SNS_IDS = ["snsAccordionRowMiddle", "sns-base-price", "sns-tiered-price", "subscriptionPrice"]
+
+
 def _outside_unit_price(elements):
     """The first price element that carries an amount and sits outside the
     per-unit block ("58,24 € / kg" is an .a-text-price too and precedes the
-    strike-through list price). The 2026 apex layout also leaves an empty
-    `.a-offscreen` (one space) ahead of the real one: skipped."""
+    strike-through list price) and outside the Subscribe & Save block (on a
+    render that hides the one-time price behind "add to cart to see", the
+    subscription price is the only `.aok-offscreen` left in #buybox — it
+    was reported as the price, 2026-10-19). The 2026 apex layout also
+    leaves an empty `.a-offscreen` (one space) ahead of the real one:
+    skipped."""
     for el in elements:
         if el.find_parent(class_=["pricePerUnit", "apex-priceperunit-value"]) is not None or el.find_parent(id="pricePerUnit") is not None:
+            continue
+        if el.find_parent(class_=_SNS_CLASSES) is not None or el.find_parent(id=_SNS_IDS) is not None:
             continue
         if amount_of(text(el)) is not None:
             return el
