@@ -31,7 +31,7 @@ forms and their tokens, presentation-only strings ("Brief content visible,
 double tap…"), duplicated price renderings (a-offscreen vs whole/fraction).
 """
 import html as _html
-import json
+import fastjson
 import re
 from datetime import datetime
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
@@ -307,7 +307,7 @@ def balanced_json(text_, start):
             depth -= 1
             if depth == 0:
                 try:
-                    return json.loads(text_[start:i + 1])
+                    return fastjson.loads(text_[start:i + 1])
                 except ValueError:
                     return None
     return None
@@ -336,12 +336,12 @@ def a_state(soup_, key):
     """The JSON of a <script type="a-state" data-a-state='{"key":…}'> block."""
     for script in soup_.select('script[type="a-state"]'):
         try:
-            meta = json.loads(_html.unescape(script.get("data-a-state") or "{}"))
+            meta = fastjson.loads(_html.unescape(script.get("data-a-state") or "{}"))
         except ValueError:
             continue
         if meta.get("key") == key:
             try:
-                return json.loads(script.get_text() or "null")
+                return fastjson.loads(script.get_text() or "null")
             except ValueError:
                 return None
     return None
@@ -678,7 +678,7 @@ def _customers_say(html_text):
     aspects = []
     for token in re.findall(r"k\+b64 ([A-Za-z0-9+/=]+)", html_text):
         try:
-            blob = json.loads(base64.b64decode(token).decode("utf-8", "ignore"))
+            blob = fastjson.loads(base64.b64decode(token).decode("utf-8", "ignore"))
         except Exception:
             continue
         component = str(blob.get("k-component") or "")
@@ -1055,7 +1055,7 @@ def _recs_list(doc):
     if grid is None:
         return []
     try:
-        return json.loads(_html.unescape(grid.get("data-client-recs-list") or "[]"))
+        return fastjson.loads(_html.unescape(grid.get("data-client-recs-list") or "[]"))
     except ValueError:
         return []
 

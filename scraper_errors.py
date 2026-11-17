@@ -27,6 +27,13 @@ class Blocked(UpstreamError):
     """Anti-bot challenge / 403 / 429 — retryable after a fresh exit or identity."""
 
 
+class Unavailable(UpstreamError):
+    """The site is refusing us right now and the scraper has STOPPED calling
+    it (a breaker or a pause): nothing was attempted for this request. The
+    routes answer 503 with Retry-After — retry in minutes, not seconds."""
+    retry_after = 120
+
+
 class BadRequest(Exception):
     """Upstream rejected the params — never retried."""
 

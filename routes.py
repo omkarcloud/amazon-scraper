@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 
 from bottle import request, response, route
 
+from cache import DontCache
 from amazon import influencers, products, rankings, schemas, search, sellers
 from schema_fields import load_query
 from scraper_errors import BadRequest, Blocked, NotFound, UpstreamError
@@ -76,6 +77,8 @@ def handle(schema, impl, paginated):
         return json_response({"error": f"amazon request failed: {e}"}, 502)
     except Exception as e:
         return json_response({"error": f"{type(e).__name__}: {e}"}, 500)
+    if isinstance(result, DontCache):       # an answer not worth caching
+        result = result.data
     if paginated:
         result = paginate(result, request.path, raw)
     return json_response(result)

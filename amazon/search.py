@@ -12,6 +12,7 @@ straight into the URL.
 import re
 
 from amazon import fetch, parsers as P, refs
+from cache import DontCache
 from amazon.shared import context, paged_result
 
 PER_PAGE = 24            # organic cards per page on the desktop layout (16-60 depending on layout)
@@ -152,7 +153,10 @@ def autocomplete(query, country=None, category=None, limit=11):
     site, _ = context(country)
     body = fetch.completion(site["country"], {"prefix": query, "alias": category or "aps", "limit": str(limit)})
     rows = [P.suggestion(s) for s in (body or {}).get("suggestions") or []]
-    return {"query": query, "suggestions": rows[:limit], "count": len(rows[:limit]), "country": site["country"]}
+    result = {"query": query, "suggestions": rows[:limit], "count": len(rows[:limit]), "country": site["country"]}
+    # an empty list is as often a broken completion host as a dead prefix;
+    # don't pin it for AUTOCOMPLETE_CACHE
+    return result if rows else DontCache(result)
 
 
 def categories(country=None, language=None):

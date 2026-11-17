@@ -48,3 +48,15 @@ def amazon_datacenter_proxy():
 def amazon_fallback_proxy(country):
     """The proxy a marketplace moves to after repeated blocks (None = none)."""
     return AMAZON_PROXY
+
+
+# ---- added by the sync: defaults for a direct run ----
+AMAZON_GATEWAY_EXITS = None
+AMAZON_GATEWAY_FAILURES = 2
+AMAZON_GATEWAY_PAUSE = 600
+AMAZON_GATEWAY_WINDOW = 60
+AMAZON_SESSION_MAX_AGE = 1800
+AMAZON_SESSION_USES = 40
+def gateway_exit(exit=None):
+    return None
+

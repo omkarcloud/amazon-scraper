@@ -3,9 +3,17 @@ browser (validated 2026-09-22 from direct Indian egress and residential proxy
 exits). Four tricks make the storefronts answer reliably, all applied here
 so the endpoint modules only ask for pages:
 
-  1. WARM SESSION — every thread keeps one session per marketplace and
-     GETs the homepage first (session-id cookie); cold requests are a coin
-     flip (503 "dogs" page / captcha).
+  1. WARM SESSION — a session per marketplace GETs the homepage first
+     (session-id cookie); cold requests are a coin flip (503 "dogs" page /
+     captcha). Sessions live in a process-wide identity_pool.Pool in
+     exclusive mode (since 2026-11-09), keyed (country, purpose, language):
+     a request borrows one for ONE storefront call (warm-up, PoW,
+     click-through, delivery location and the re-render all on that
+     session) and hands it back, so the next request on ANY of the pod's
+     64 threads reuses it. Before, each thread kept its own, so the
+     warm-up (1-5 requests) repeated per thread and after every block. A
+     session is retired after AMAZON_SESSION_USES calls, AMAZON_SESSION_MAX_AGE
+     seconds, or on the first block / transport error (`dead`).
   2. REFERER on every navigation (a search URL on the same host) — product
      pages answer a captcha to a chrome fingerprint without it. Marketplaces
      other than .com/.ca captcha the chrome fingerprint regardless and pass
@@ -52,7 +60,7 @@ Surfaces (each returns text or parsed JSON and raises the taxonomy below):
      session then gets real pages (measured from direct, US, DE, GB exits).
 
 Egress (config.AMAZON_EGRESS, 2026-10-19): a new session rides a sticky
-DataImpulse DATACENTER exit — never the process's own IP in production
+proxy DATACENTER exit — never the process's own IP in production
 (the pod's IP got Amazon's price-less edge fallback render under bursts).
 Blocks (image captcha / 503 dogs / AWS WAF 202 / edge fallback render) and
 transport errors throw the session away; AMAZON_DATACENTER_FAILURES of them
@@ -61,6 +69,17 @@ in its own country (config.amazon_fallback_proxy) for good, until restart
 (_note_failure). Marketplaces that never answer foreign exits (sites.py
 `exit_country`: JP, AU) always run through a residential exit pinned to
 their country.
+Since 2026-11-11 AMAZON_EGRESS is "gateway": the marketplaces listed in
+config.AMAZON_GATEWAY_EXITS ride the gateway (exit_gateway.py) named
+there — the US one or a country's own, JP and AU included — in front of
+those tiers. There a session is cookies only: every request leaves from
+another gateway address, and Amazon honours the session cookies across them
+(warm-up, delivery location, the data host's copied cookies all hold — the
+evidence is in config.py's Amazon block). Failures on the gateway send the
+marketplace's new sessions back to the tier behind it (the datacenter
+exit; JP / AU their pinned residential exit) for config.AMAZON_GATEWAY_PAUSE
+seconds (_note_failure); from there the residential switch above works as
+before.
 
 FALLBACK HOOK: if Amazon ever starts serving a JavaScript challenge that
 no fingerprint passes, escalate the way g2 does — a patchright pool with
@@ -71,11 +90,11 @@ works.
 
 Failure taxonomy (scraper_errors, mapped to HTTP by route_glue):
   AmazonUpstreamError  transport failure / 5xx / unparsable body   — retryable
-  AmazonBlocked        captcha / dogs page after the fallback exit  — retryable
+  AmazonBlocked        captcha / dogs page after the fallback exit — retryable
   AmazonBadRequest     upstream rejected the params                 — never retried
   AmazonNotFound       ASIN / seller / page does not exist          — never retried
 """
-import json
+import fastjson
 import os
 import re
 import sys
@@ -85,8 +104,10 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+import identity_pool
 from amazon import sites
 from scraper_errors import BadRequest, Blocked, NotFound, UpstreamError
+from scraper_utils import debug
 
 TIMEOUT = 45
 RETRIES = 2                    # transport failures / 5xx per call
@@ -111,13 +132,14 @@ USER_AGENTS = {
 }
 FANOUT_WORKERS = 6
 
+# No Accept-Language here: every request goes through _Session.headers(),
+# which sets the session's own (sites.accept_language of the marketplace
+# language), so a literal would only ever be overridden.
 PAGE_HEADERS = {
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "accept-language": "en-US,en;q=0.9",
 }
 AJAX_HEADERS = {
     "accept": "text/html,*/*",
-    "accept-language": "en-US,en;q=0.9",
     "x-requested-with": "XMLHttpRequest",
 }
 
@@ -145,26 +167,44 @@ class AmazonNotFound(NotFound):
     """The ASIN / seller / page does not exist — never retried."""
 
 
-# ---- per-thread sessions ------------------------------------------------------------------
+# ---- pooled sessions ----------------------------------------------------------------------
 
-_local = threading.local()
+_local = threading.local()   # `last`: a pointer to the page session this thread's latest call rode (not a cache)
 _egress_lock = threading.Lock()
 _dc_failures = {}       # country -> failures seen on the datacenter / direct egress (process-wide)
 _residential = set()    # countries moved to residential exits for good (until restart)
+_gateway_failures = {}      # country -> time.monotonic() of its latest failures on the gateway exit
+_gateway_paused = {}        # country -> time.monotonic() until which its new sessions skip the gateway
 
 
-class _Session:
-    """One curl_cffi session plus the per-session state the tricks need."""
+class _Session(identity_pool.Identity):
+    """One curl_cffi session plus the per-session state the tricks need. The
+    pool (identity_pool.Identity) keeps the budget / age / refusal
+    bookkeeping; `dead` marks a blocked session for retirement on give-back."""
 
     def __init__(self, site, proxy, http1=False, language=None, egress="direct"):
         from curl_cffi import requests as curl_requests
-        self.egress = egress         # "datacenter" | "residential" | "direct" (see _proxy_for)
-        kwargs = {"impersonate": site["fingerprint"], "timeout": TIMEOUT}
-        if http1:
-            kwargs["http_version"] = 1
-        self.curl = curl_requests.Session(**kwargs)
-        if proxy:
-            self.curl.proxies = {"http": proxy, "https": proxy}
+        super().__init__(exit=proxy)
+        self.egress = egress         # "gateway" | "datacenter" | "residential" | "direct" (see _proxy_for)
+        # `proxy` "gateway" / "gateway:<cc>" = the gateway exit: `curl` is then an
+        # exit_gateway.Session (a look-alike with its own cookie jar, see
+        # cookie_list / set_cookie / keep_language)
+        self.gateway = bool(config.gateway_exit(proxy))
+        # ONE curl handle for the session's life (no thread-local handles):
+        # the pool lends it to one request at a time, so threads take turns
+        kwargs = {"impersonate": site["fingerprint"], "timeout": TIMEOUT, "use_thread_local_curl": False}
+        if self.gateway:
+            # no http_version: it would only shape the hop to the gateway, and the
+            # data host answers every call through the gateway as it is
+            # (33/33, 2026-11-11)
+            from egress import new_session      # lazy: only the gateway exit needs it
+            self.curl = new_session(proxy, **kwargs)
+        else:
+            if http1:
+                kwargs["http_version"] = 1
+            self.curl = curl_requests.Session(**kwargs)
+            if proxy:
+                self.curl.proxies = {"http": proxy, "https": proxy}
         # Display currency + language are cookies, not the exit's geo: without
         # them a session from India sees every .com price converted to INR,
         # and a US exit sees amazon.de in English.
@@ -172,14 +212,16 @@ class _Session:
         self.language = language or site["language"]
         self.locale_cookie = sites.locale_cookie(site)
         self.accept_language = sites.accept_language(self.language)
-        self.curl.cookies.set("i18n-prefs", site["currency"], domain=self.domain)
-        self.curl.cookies.set(self.locale_cookie, self.language, domain=self.domain)
+        self.set_cookie("i18n-prefs", site["currency"])
+        self.set_cookie(self.locale_cookie, self.language)
         self.site = site
         self.proxy = proxy
         self.warmed = False
         self.located = None          # the postal code the session shops from
         self.pow_solved = 0
         self.glow_token = None
+        self.closed = False
+        self.cookie_snapshot = []    # (name, value, domain, path) after the last page call (page_cookies)
 
     def headers(self, base):
         """`base` with this session's Accept-Language and User-Agent."""
@@ -188,11 +230,39 @@ class _Session:
         out["accept-language"] = self.accept_language
         return out
 
+    def cookie_list(self):
+        """(name, value, domain, path) of every cookie the session holds.
+        The gateway's jar keeps no path and stores a Domain= cookie without
+        its dot: the marketplace's own domain gets the dot back (so a copy
+        handed to the data host's session is sent to data.amazon.<tld>);
+        any other domain is one host's own cookie."""
+        if self.gateway:
+            apex = self.domain[1:]
+            return [(c.name, c.value, self.domain if c.domain == apex else c.domain, "/") for c in self.curl.cookies]
+        return [(c.name, c.value, c.domain, c.path) for c in self.curl.cookies.jar]
+
+    def set_cookie(self, name, value, domain=None, path="/"):
+        """Seed a cookie (the marketplace's dot-domain by default)."""
+        if self.gateway:
+            self.curl.cookies.set(name, value, domain or self.domain)      # exit_gateway.CookieJar: no path
+        else:
+            self.curl.cookies.set(name, value, domain=domain or self.domain, path=path)
+
     def keep_language(self):
         """Put the locale cookie back when a response rewrote it (Amazon
         sets lc-acb<cc> from Accept-Language on the first real page and
         after a captcha). Set-Cookie lands on the bare host while ours sits
         on the dot-domain, so every copy is replaced."""
+        if self.gateway:
+            # exit_gateway.CookieJar cannot drop one cookie: a stale copy is
+            # overwritten where it sits
+            cookies = self.cookie_list()
+            for name, value, domain, _ in cookies:
+                if name == self.locale_cookie and value != self.language:
+                    self.set_cookie(name, self.language, domain)
+            if not any(name == self.locale_cookie for name, *_ in cookies):
+                self.set_cookie(self.locale_cookie, self.language)
+            return
         jar = self.curl.cookies.jar
         stale = [c for c in jar if c.name == self.locale_cookie and c.value != self.language]
         for c in stale:
@@ -203,18 +273,59 @@ class _Session:
         if stale or not any(c.name == self.locale_cookie for c in jar):
             self.curl.cookies.set(self.locale_cookie, self.language, domain=self.domain)
 
+    def snapshot_cookies(self):
+        """Copy the jar (taken by the borrower, so another thread may read
+        the copy later without touching the live jar)."""
+        self.cookie_snapshot = self.cookie_list()
+        return self.cookie_snapshot
+
     def close(self):
+        """The pool is done with it (on_retire): release the curl session."""
+        if self.closed:
+            return
+        self.closed = True
         try:
             self.curl.close()
         except Exception:
             pass
 
 
-def _store():
-    store = getattr(_local, "sessions", None)
-    if store is None:
-        store = _local.sessions = {}
-    return store
+def _key(country, purpose="page", language=None):
+    """The pool key of a session: (marketplace, "page" | "aapi", storefront language)."""
+    site = sites.site(country)
+    return (site["country"], purpose, language or site["language"])
+
+
+def _mint(key, hint=None):
+    """The pool's mint: a cold session for `key` on the egress _proxy_for
+    picks (never warmed here: the first call warms it, like before)."""
+    country, purpose, language = key
+    site = sites.site(country)
+    proxy, egress = _proxy_for(site)
+    return _Session(site, proxy, http1=(purpose == "aapi"), language=language, egress=egress)
+
+
+# Exclusive lending: a session owns its curl handle, so one request at a time;
+# the pool waits for a lent session to come back before minting another (see
+# identity_pool). Retired sessions are closed here.
+_sessions = identity_pool.Pool(
+    "amazon", _mint, mode="exclusive",
+    budget=lambda: config.AMAZON_SESSION_USES,
+    max_age=lambda: config.AMAZON_SESSION_MAX_AGE,
+    on_retire=lambda ident, reason: ident.close())
+
+
+def _gateway_for(country):
+    """The gateway exit a NEW session of that marketplace rides ("gateway" =
+    the US gateway, "gateway:<cc>" = that country's; config.AMAZON_GATEWAY_EXITS), or
+    None: AMAZON_EGRESS is not "gateway", the AMAZON_PROXY_COUNTRY override is
+    on, the marketplace is not listed, is paused after gateway failures, or
+    was moved to residential exits for good."""
+    if not config.gateway_exit(config.AMAZON_EGRESS) or config.AMAZON_PROXY_COUNTRY:
+        return None
+    if country in _residential or time.monotonic() < _gateway_paused.get(country, 0.0):
+        return None
+    return config.gateway_exit(config.AMAZON_GATEWAY_EXITS.get(country))
 
 
 def _proxy_for(site):
@@ -223,20 +334,35 @@ def _proxy_for(site):
     foreign IPs, the AMAZON_PROXY_COUNTRY override, else a datacenter exit
     until the marketplace has been moved to residential for good
     (_note_failure), then a residential exit in the marketplace's country.
-    Direct egress only when AMAZON_EGRESS is "direct" (or no residential
-    exit is configured for a moved marketplace)."""
+    Direct egress only when AMAZON_EGRESS is "direct" (a moved marketplace
+    whose residential switch is disabled stays on the datacenter exit).
+    AMAZON_EGRESS "gateway" puts the gateway exit in front of all that for the
+    marketplaces in config.AMAZON_GATEWAY_EXITS (_gateway_for): any other
+    marketplace, and one whose gateway use is paused (_note_failure), gets
+    the "datacenter" behaviour above unchanged — a pinned storefront its
+    residential exit."""
     country = site["country"]
+    gateway = _gateway_for(country)
+    if gateway:
+        return gateway, "gateway"
     if site["exit_country"]:
         return config.amazon_country_proxy(site["exit_country"]), "residential"
     if config.AMAZON_PROXY_COUNTRY:
         return config.amazon_country_proxy(config.AMAZON_PROXY_COUNTRY), "residential"
     egress = config.AMAZON_EGRESS
+    if config.gateway_exit(egress):
+        egress = "datacenter"       # not listed or paused: the tier behind the gateway
     if egress == "datacenter" and country not in _residential:
         return config.amazon_datacenter_proxy(), "datacenter"
     if egress in ("datacenter", "residential") or country in _residential:
         proxy = config.amazon_fallback_proxy(country)
         if proxy:
             return proxy, "residential"
+        # AMAZON_FALLBACK_PROXY_COUNTRY = "" only disables the datacenter ->
+        # residential SWITCH: a marketplace configured for residential
+        # egress still rides its own country's exit, never the process's IP
+        if egress == "residential":
+            return config.amazon_country_proxy(country), "residential"
         if egress == "datacenter":
             return config.amazon_datacenter_proxy(), "datacenter"
     return None, "direct"
@@ -248,8 +374,25 @@ def _note_failure(sess, reason):
     at config.AMAZON_DATACENTER_FAILURES the marketplace moves to residential
     exits permanently (until restart). Failures on residential exits or on
     a country-pinned storefront change nothing (there is nowhere further to
-    go); its session is simply replaced."""
+    go); its session is simply replaced. On the gateway exit the switch is
+    temporary: config.AMAZON_GATEWAY_FAILURES failures of a marketplace within
+    config.AMAZON_GATEWAY_WINDOW seconds send its NEW sessions to the tier
+    behind it (_proxy_for: the datacenter exit, a pinned storefront's
+    residential exit) for config.AMAZON_GATEWAY_PAUSE seconds — so the third
+    session of a call the gateway failed twice is already on that tier —
+    and then the gateway is tried again."""
     country = sess.site["country"]
+    if sess.egress == "gateway":
+        now = time.monotonic()
+        with _egress_lock:
+            recent = [t for t in _gateway_failures.get(country, ()) if now - t < config.AMAZON_GATEWAY_WINDOW] + [now]
+            _gateway_failures[country] = recent
+            if len(recent) >= config.AMAZON_GATEWAY_FAILURES:
+                _gateway_failures[country] = []
+                _gateway_paused[country] = now + config.AMAZON_GATEWAY_PAUSE
+                print(f"amazon {country}: {len(recent)} failures on the gateway exit within "
+                      f"{config.AMAZON_GATEWAY_WINDOW} s (last: {reason}); proxy exits for {config.AMAZON_GATEWAY_PAUSE} s")
+        return
     if sess.egress == "residential" or sess.site["exit_country"] or country in _residential:
         return
     if not config.amazon_fallback_proxy(country):
@@ -262,38 +405,21 @@ def _note_failure(sess, reason):
                   f"(last: {reason}); moving this marketplace to residential exits for good")
 
 
-def session(country, purpose="page", language=None):
-    """The calling thread's session for a marketplace (+ purpose: "page" for
-    the storefront, "aapi" for the HTTP/1.1 data host; + the storefront
-    language when not the marketplace default), created on demand."""
-    site = sites.site(country)
-    language = language or site["language"]
-    key = (site["country"], purpose, language)
-    store = _store()
-    sess = store.get(key)
-    if sess is None:
-        proxy, egress = _proxy_for(site)
-        sess = store[key] = _Session(site, proxy, http1=(purpose == "aapi"), language=language, egress=egress)
-    return sess
-
-
 def drop_session(country, purpose="page", language=None):
-    site = sites.site(country)
-    sess = _store().pop((site["country"], purpose, language or site["language"]), None)
-    if sess is not None:
-        sess.close()
+    """Retire the session that served this thread's latest call of that key
+    (products.py: a page that rendered without a title / inline reviews
+    wants its next render on another session). Retired at once when idle,
+    on give-back when another thread is using it; a no-op when the thread's
+    last call rode a session of another key."""
+    sess = getattr(_local, "last", None)
+    if sess is not None and sess.key == _key(country, purpose, language):
+        _sessions.retire(sess, "refused")
+        _local.last = None
 
 
 def dump_debug(name, text):
     """Write a raw response to $AMAZON_DEBUG_DIR/<name>.txt."""
-    dbg = os.environ.get("AMAZON_DEBUG_DIR", "")
-    if dbg and text:
-        try:
-            os.makedirs(dbg, exist_ok=True)
-            with open(os.path.join(dbg, name + ".txt"), "w") as f:
-                f.write(text)
-        except OSError:
-            pass
+    debug.dump("AMAZON_DEBUG_DIR", name, text)
 
 
 # ---- block detection ------------------------------------------------------------------------
@@ -363,7 +489,8 @@ def is_fallback_render(sess, resp):
     text = resp.text or ""
     if len(text) < FALLBACK_MIN_BYTES or "<html" not in text[:4000].lower():
         return False
-    return not any(c.name == "session-id" for c in sess.curl.cookies.jar)
+    jar = sess.curl.cookies if getattr(sess, "gateway", False) else sess.curl.cookies.jar
+    return not any(c.name == "session-id" for c in jar)
 
 
 # ---- the tricks --------------------------------------------------------------------------------
@@ -472,96 +599,128 @@ def _referer(site, referer):
     return referer or f"{site['base']}/s?k=amazon"
 
 
+def _render(sess, method, url, hdrs, *, purpose, clicks, params=None, data=None, json_body=None,
+            allow_redirects=True):
+    """One navigation on a borrowed session with the inline tricks: the
+    Akamai PoW, the "continue shopping" submits (`clicks`: a one-element
+    counter, CLICK_THROUGHS per call) and the locale cookie. Returns (resp,
+    block reason or None); transport errors propagate."""
+    def send():
+        return sess.curl.request(method, url, params=params or None, data=data, json=json_body, headers=hdrs,
+                                 allow_redirects=allow_redirects)
+    resp = send()
+    if purpose == "page" and is_pow(resp.text or ""):
+        if _solve_pow(sess, resp.text):
+            resp = send()
+    while purpose != "aapi" and clicks[0] < CLICK_THROUGHS and is_click_through(resp.text or ""):
+        clicks[0] += 1
+        if not click_through(sess, resp):
+            break
+        resp = send()
+    if purpose != "aapi":
+        sess.keep_language()
+    reason = _blocked_reason(resp)
+    if reason is None and purpose == "page" and is_pow(resp.text or ""):
+        reason = "unsolved bm-verify interstitial"   # never hand the 2 KB stub to a parser
+    if reason is None and purpose == "page" and is_fallback_render(sess, resp):
+        reason = "edge fallback render (origin throttled; price hidden)"
+    return resp, reason
+
+
 def _request(country, method, path, *, params=None, data=None, json_body=None, headers=None, purpose="page",
-             locate=True, postal_code=None, language=None, referer=None, label=None, allow_redirects=True):
-    """One storefront call with the block handling: fresh session on a
-    captcha / dogs page, fallback exit after that, transport retries on
-    5xx / network errors, inline PoW solving, and (page purpose) the
-    one-off delivery-location change harvested from the first page body —
-    which re-fetches that page so it renders for the local address."""
+             locate=True, locate_first=False, postal_code=None, language=None, referer=None, label=None,
+             allow_redirects=True, cookies=None):
+    """One storefront call with the block handling: another pooled session
+    on a captcha / dogs page (the blocked one is retired; the fallback exit
+    once the marketplace has failed enough), transport retries on 5xx /
+    network errors, inline PoW solving, and (page purpose) the delivery
+    location: `locate` harvests the token from this page's own body and
+    renders the page again on the same session so it shows local prices;
+    `locate_first` (a same-host XHR such as the offers) makes the session
+    shop locally from a cheap storefront page BEFORE the call. `cookies`
+    [(name, value, domain, path)] are set on the borrowed session first
+    (the data host's HTTP/1.1 session is authorised by the storefront
+    session's cookies).
+
+    One session is borrowed per loop iteration — warm-up, PoW, click-through,
+    locate and re-render all ride it — and given back before any back-off
+    sleep; a block or a transport error marks it dead (retired on give-back)
+    and the next iteration borrows another."""
     site = sites.site(country)
+    key = _key(country, purpose, language)
     url = path if path.startswith("http") else site["base"] + path
     label = label or url.split("?")[0]
+    wanted = (postal_code or site["postal_code"]) if purpose == "page" and (locate or locate_first) else None
     attempt = 0
     blocks = 0
-    relocated = False
-    clicks = 0
+    clicks = [0]
+    delay = 0.0
     while True:
-        sess = session(country, purpose, language)
+        if delay:
+            time.sleep(delay)
+        sess = _sessions.borrow(key)
+        if purpose == "page":
+            _local.last = sess
         try:
-            if purpose == "page":
-                _warm(sess)
-            hdrs = sess.headers(headers or PAGE_HEADERS)
-            hdrs.setdefault("referer", _referer(site, referer))
-            resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body, headers=hdrs,
-                                     allow_redirects=allow_redirects)
-            if purpose == "page" and is_pow(resp.text or ""):
-                if _solve_pow(sess, resp.text):
-                    resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body,
-                                             headers=hdrs, allow_redirects=allow_redirects)
-            while purpose != "aapi" and clicks < CLICK_THROUGHS and is_click_through(resp.text or ""):
-                clicks += 1
-                if not click_through(sess, resp):
-                    break
-                resp = sess.curl.request(method, url, params=params or None, data=data, json=json_body,
-                                         headers=hdrs, allow_redirects=allow_redirects)
-            if purpose != "aapi":
-                sess.keep_language()
-            reason = _blocked_reason(resp)
-            if reason is None and purpose == "page" and is_pow(resp.text or ""):
-                reason = "unsolved bm-verify interstitial"   # never hand the 2 KB stub to a parser
-            if reason is None and purpose == "page" and is_fallback_render(sess, resp):
-                reason = "edge fallback render (origin throttled; price hidden)"
-        except AmazonBlocked as e:
-            reason = str(e)
-            resp = None
-        except Exception as e:
-            _note_failure(sess, f"{type(e).__name__}: {e}")
-            drop_session(country, purpose, language)
-            attempt += 1
-            if attempt > RETRIES:
-                raise AmazonUpstreamError(f"{label}: {type(e).__name__}: {e}")
-            time.sleep(0.5 * attempt)
-            continue
-        if reason:
-            blocks += 1
-            _note_failure(sess, reason)
-            drop_session(country, purpose, language)
-            if blocks >= BLOCK_RETRIES:
-                raise AmazonBlocked(f"{label}: {reason} (after {blocks} sessions)")
-            time.sleep(1.5 * blocks)     # the 503 dogs page is mostly a burst limiter: back off
-            continue
-        if resp.status_code == 404:
-            raise AmazonNotFound(f"{label}: not found")
-        if resp.status_code == 400:
-            raise AmazonBadRequest(f"{label}: HTTP 400")
-        if resp.status_code >= 500:
-            attempt += 1
-            if attempt > RETRIES:
-                raise AmazonUpstreamError(f"HTTP {resp.status_code} on {label}")
-            time.sleep(0.5 * attempt)
-            continue
-        if purpose == "page" and locate and not relocated and resp.status_code == 200:
-            wanted = postal_code or site["postal_code"]
-            if wanted and sess.located != wanted and _locate_from(sess, resp.text, wanted):
-                relocated = True     # the session now shops locally: render this page again
+            try:
+                if purpose == "page":
+                    _warm(sess)
+                for name, value, domain, cpath in cookies or ():
+                    sess.set_cookie(name, value, domain, cpath or "/")
+                hdrs = sess.headers(headers or PAGE_HEADERS)
+                hdrs.setdefault("referer", _referer(site, referer))
+                reason = None
+                if locate_first and wanted and sess.located != wanted:
+                    # the offers XHR renders for the session's address: a cheap
+                    # storefront page carries the glow token (best effort: a
+                    # non-block failure leaves the session as it was)
+                    page_resp, reason = _render(sess, "GET", site["base"] + "/gp/bestsellers/",
+                                                {**sess.headers(PAGE_HEADERS), "referer": _referer(site, None)},
+                                                purpose="page", clicks=clicks)
+                    if reason is None and page_resp.status_code == 200:
+                        _locate_from(sess, page_resp.text, wanted)
+                if reason is None:
+                    resp, reason = _render(sess, method, url, hdrs, purpose=purpose, clicks=clicks, params=params,
+                                           data=data, json_body=json_body, allow_redirects=allow_redirects)
+                    if (reason is None and locate and wanted and resp.status_code == 200 and sess.located != wanted
+                            and _locate_from(sess, resp.text, wanted)):
+                        # the session now shops locally: render this page again on it
+                        resp, reason = _render(sess, method, url, hdrs, purpose=purpose, clicks=clicks, params=params,
+                                               data=data, json_body=json_body, allow_redirects=allow_redirects)
+            except AmazonBlocked as e:
+                reason = str(e)
+                resp = None
+            except Exception as e:
+                _note_failure(sess, f"{type(e).__name__}: {e}")
+                sess.dead = True
+                attempt += 1
+                if attempt > RETRIES:
+                    raise AmazonUpstreamError(f"{label}: {type(e).__name__}: {e}")
+                delay = 0.5 * attempt
                 continue
-        return resp
-
-
-def ensure_location(country, postal_code=None, language=None):
-    """Make sure the thread's session for `country` shops from a local
-    address before a same-host XHR (offers) that renders location-dependent
-    data: harvests the token from a cheap storefront page when needed."""
-    site = sites.site(country)
-    wanted = postal_code or site["postal_code"]
-    if not wanted:
-        return False
-    sess = session(country, "page", language)
-    if sess.located == wanted:
-        return True
-    _request(country, "GET", "/gp/bestsellers/", locate=True, postal_code=wanted, language=language, label="locate")
-    return session(country, "page", language).located == wanted
+            if reason:
+                blocks += 1
+                _note_failure(sess, reason)
+                sess.dead = True
+                if blocks >= BLOCK_RETRIES:
+                    raise AmazonBlocked(f"{label}: {reason} (after {blocks} sessions)")
+                delay = 1.5 * blocks     # the 503 dogs page is mostly a burst limiter: back off
+                continue
+            if resp.status_code == 404:
+                raise AmazonNotFound(f"{label}: not found")
+            if resp.status_code == 400:
+                raise AmazonBadRequest(f"{label}: HTTP 400")
+            if resp.status_code >= 500:
+                attempt += 1
+                if attempt > RETRIES:
+                    raise AmazonUpstreamError(f"HTTP {resp.status_code} on {label}")
+                delay = 0.5 * attempt
+                continue
+            if purpose == "page":
+                sess.snapshot_cookies()
+            return resp
+        finally:
+            _sessions.give_back(sess)
 
 
 def page(country, path, params=None, *, referer=None, locate=True, postal_code=None, language=None, label=None):
@@ -587,13 +746,13 @@ def page_with_url(country, path, params=None, *, referer=None, locate=True, post
 def ajax(country, path, params=None, *, method="GET", data=None, json_body=None, referer=None, headers=None,
          locate=False, postal_code=None, language=None, label=None):
     """Same-host XHR (offers, seller feedback, deals search) -> response
-    text. `locate=True` first makes the session shop locally (offers)."""
+    text. `locate=True` first makes the borrowed session shop locally
+    (offers), on that same session."""
     site = sites.site(country)
-    if locate:
-        ensure_location(country, postal_code, language)
     hdrs = {**AJAX_HEADERS, "referer": referer or site["base"] + "/", **(headers or {})}
     resp = _request(country, method, path, params=params, data=data, json_body=json_body, headers=hdrs,
-                    referer=referer, locate=False, language=language, label=label)
+                    referer=referer, locate=False, locate_first=locate, postal_code=postal_code,
+                    language=language, label=label)
     return resp.text or ""
 
 
@@ -602,18 +761,23 @@ def ajax_json(country, path, params=None, *, method="GET", data=None, json_body=
     text = ajax(country, path, params, method=method, data=data, json_body=json_body, referer=referer,
                 headers=headers, locate=locate, postal_code=postal_code, language=language, label=label)
     try:
-        return json.loads(text) if text.strip() else None
+        return fastjson.loads(text) if text.strip() else None
     except ValueError:
         dump_debug("non_json", text)
         raise AmazonUpstreamError(f"{label or path}: non-JSON body ({text[:80]!r})")
 
 
 def page_cookies(country, language=None):
-    """The storefront cookies of the calling thread's page session, as
-    (name, value, domain, path) tuples — handed to worker threads whose
-    own sessions never loaded a page (deal price fan-out)."""
-    sess = session(country, "page", language)
-    return [(c.name, c.value, c.domain, c.path) for c in sess.curl.cookies.jar]
+    """The storefront cookies of the page session this thread's latest call
+    rode (the one that loaded the deals page), as (name, value, domain,
+    path) tuples — handed to worker threads for the data host (deal price
+    fan-out). When the thread made no such call, a pooled page session's."""
+    key = _key(country, "page", language)
+    sess = getattr(_local, "last", None)
+    if sess is not None and sess.key == key and not sess.dead:
+        return list(sess.cookie_snapshot)
+    with _sessions.lend(key) as sess:
+        return sess.snapshot_cookies()
 
 
 def aapi(country, path, *, accept, csrf_token, currency=None, referer=None, cookies=None, label=None):
@@ -621,13 +785,12 @@ def aapi(country, path, *, accept, csrf_token, currency=None, referer=None, cook
     list, `x-api-csrf-token` the deals page's token). HTTP/1.1 session.
     The data host authorises the call through the storefront cookies
     (session-id, …) of the session that loaded the deals page: they are
-    copied into the HTTP/1.1 session before every call — `cookies` (from
-    page_cookies) when the caller runs on another thread."""
+    copied into the borrowed HTTP/1.1 session before every call — `cookies`
+    (from page_cookies) when the caller runs on another thread."""
     site = sites.site(country)
     url = f"https://{site['data_host']}{path}"
-    data_sess = session(country, "aapi")
-    for name, value, domain, cpath in (cookies if cookies is not None else page_cookies(country)):
-        data_sess.curl.cookies.set(name, value, domain=domain or ("." + site["domain"]), path=cpath or "/")
+    cookies = [(name, value, domain or ("." + site["domain"]), cpath or "/")
+               for name, value, domain, cpath in (cookies if cookies is not None else page_cookies(country))]
     headers = {
         "accept": accept,
         "accept-language": site["language"].replace("_", "-"),
@@ -637,10 +800,11 @@ def aapi(country, path, *, accept, csrf_token, currency=None, referer=None, cook
         "origin": site["base"],
         "referer": referer or site["base"] + "/deals",
     }
-    resp = _request(country, "GET", url, headers=headers, purpose="aapi", locate=False, label=label or path)
+    resp = _request(country, "GET", url, headers=headers, purpose="aapi", locate=False, label=label or path,
+                    cookies=cookies)
     text = resp.text or ""
     try:
-        body = json.loads(text) if text.strip() else None
+        body = fastjson.loads(text) if text.strip() else None
     except ValueError:
         raise AmazonUpstreamError(f"{label or path}: non-JSON body ({text[:80]!r})")
     if isinstance(body, dict) and body.get("type") == "error/v1":
@@ -662,9 +826,9 @@ def completion(country, params):
     for host in hosts:
         try:
             resp = _request(country, "GET", f"https://{host}/api/2017/suggestions", params=query,
-                            headers={"accept": "application/json", "accept-language": "en-US,en;q=0.9"},
+                            headers={"accept": "application/json"},
                             purpose="aapi", locate=False, label="suggestions")
-            body = json.loads(resp.text or "")
+            body = fastjson.loads(resp.text or "")
         except (AmazonUpstreamError, ValueError) as e:
             last = e if isinstance(e, AmazonUpstreamError) else AmazonUpstreamError(f"suggestions on {host}: non-JSON body")
             continue

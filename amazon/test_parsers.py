@@ -406,5 +406,12 @@ def test_egress_policy_datacenter_first_then_residential_for_good(monkeypatch):
 
     monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "residential")
     assert fetch._proxy_for(us) == ("http://resi-us", "residential")
+    monkeypatch.setattr(fetch.config, "amazon_fallback_proxy", lambda c: None)   # switch disabled ("")
+    assert fetch._proxy_for(us) == ("http://pinned-us", "residential")   # still never the process's IP
+    assert fetch._proxy_for(de) == ("http://pinned-de", "residential")
+    monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "datacenter")
+    assert fetch._proxy_for(de) == ("http://dc", "datacenter")          # moved, but nowhere to move to
+    monkeypatch.setattr(fetch.config, "amazon_fallback_proxy", lambda c: f"http://resi-{c.lower()}")
     monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "direct")
     assert fetch._proxy_for(us) == (None, "direct")                      # the open-source default
+    assert fetch._proxy_for(de) == ("http://resi-de", "residential")     # a moved marketplace stays moved

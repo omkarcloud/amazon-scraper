@@ -17,7 +17,9 @@
                     local shopper even from a foreign exit
     exit_country    None = direct egress works; an ISO code = the storefront
                     rejects foreign exits, so its sessions run through a
-                    residential exit pinned to that country
+                    residential exit pinned to that country (since
+                    2026-11-11 only behind that country's gateway exit,
+                    config.AMAZON_GATEWAY_EXITS, which answers in full)
     data_host       the AAPI host (data.amazon.<tld>) the deals grid hydrates
                     prices from
 
