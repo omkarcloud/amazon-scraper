@@ -415,3 +415,51 @@ def test_egress_policy_datacenter_first_then_residential_for_good(monkeypatch):
     monkeypatch.setattr(fetch.config, "AMAZON_EGRESS", "direct")
     assert fetch._proxy_for(us) == (None, "direct")                      # the open-source default
     assert fetch._proxy_for(de) == ("http://resi-de", "residential")     # a moved marketplace stays moved
+
+
+# ---- search by image ----------------------------------------------------------------------
+
+def test_image_search_answer():
+    """A real StyleSnap upload answer (amazon.com, 2026-11-20: a laptop photo):
+    57 matches, details for the first 30."""
+    out = P.image_search(json.loads(raw("stylesnap_us.json")), sites.site("US"))
+    assert out["matches_count"] == 57 and len(out["results"]) == 30 and len(out["more_results"]) == 27
+    first = out["results"][0]
+    assert first["asin"] == "B0CBJ46QZX" and first["brand"] == "Lenovo" and first["title"].startswith("Lenovo")
+    assert first["price"] == {"amount": 238.95, "currency": "USD", "list_price": None}
+    assert first["rating"] == {"average": 4.3, "count": 1436} and first["availability"] == "in_stock_scarce"
+    assert first["position"] == 1 and first["match_score"] == 0.7771 and first["link"] == "https://www.amazon.com/dp/B0CBJ46QZX"
+    assert first["image"] == "https://m.media-amazon.com/images/I/71pLH5eO6jL.jpg" and len(first["variation_asins"]) == 3
+    assert [r["position"] for r in out["results"]] == list(range(1, 31))
+    assert [m["position"] for m in out["more_results"]] == list(range(31, 58))
+    assert out["more_results"][0]["link"].startswith("https://www.amazon.com/dp/") and out["more_results"][0]["match_score"]
+    assert out["detected_object"] == {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}
+    assert out["search_link"].startswith("https://www.amazon.com/s?") and "p_78:B0CBJ46QZX|" in out["search_link"]
+
+
+def test_image_search_details_out_of_order_and_nothing_found():
+    payload = {"searchResults": [{"bbxAsinList": ["B0000000A1", "B0000000B2", "B0000000C3"],
+                                  "subContent": [{"contentType": "ASIN", "content": "B0000000C3", "properties": {"score": "0.5"}}],
+                                  "bbxAsinMetadataList": [{"asin": "B0000000C3", "price": "€1.234,50", "totalReviewCount": None}]}]}
+    out = P.image_search(payload, sites.site("DE"))
+    assert out["results"][0]["position"] == 3 and out["results"][0]["price"]["amount"] == 1234.5
+    assert out["results"][0]["price"]["currency"] == "EUR" and out["results"][0]["rating"] is None
+    assert [m["asin"] for m in out["more_results"]] == ["B0000000A1", "B0000000B2"]
+    assert P.image_search({"queryId": "x", "searchResults": []}, sites.site("US")) == {
+        "detected_object": None, "matches_count": 0, "results": [], "more_results": [], "search_link": None}
+    # a detailed match Amazon left out of its order is counted (after the ordered ones)
+    payload["searchResults"][0]["bbxAsinMetadataList"].append({"asin": "B0000000D4"})
+    out = P.image_search(payload, sites.site("DE"))
+    assert out["matches_count"] == 4 and [(r["asin"], r["position"]) for r in out["results"]] == [
+        ("B0000000C3", 3), ("B0000000D4", None)]
+    only_details = {"searchResults": [{"bbxAsinMetadataList": [{"asin": "B0000000D4"}]}]}
+    assert P.image_search(only_details, sites.site("DE"))["matches_count"] == 1
+
+
+def test_image_search_schema():
+    assert S.ImageSearchSchema().load({"image": "m.media-amazon.com/images/I/71pLH5eO6jL.jpg", "country": "uk"}) == {
+        "image": "https://m.media-amazon.com/images/I/71pLH5eO6jL.jpg", "country": "GB", "language": None}
+    with pytest.raises(Exception, match="these marketplaces"):
+        S.ImageSearchSchema().load({"image": "https://example.com/a.jpg", "country": "CA"})
+    with pytest.raises(Exception, match="data: URI"):
+        S.ImageSearchSchema().load({"image": "data:image/jpeg;base64,AAAA"})

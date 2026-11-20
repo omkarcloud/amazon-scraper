@@ -11,7 +11,7 @@ def _hosted():
         import config
     except ImportError:
         return False
-    return hasattr(config, "residential_proxy")
+    return bool(getattr(config, "HOSTED", False))
 
 
 # For a test of the hosted exit policy (which proxy a session rides, what a

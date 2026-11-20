@@ -280,3 +280,46 @@ def test_gateway_session_keeps_cookies_in_the_gateways_own_jar():
         assert fetch.is_fallback_render(sess, Resp(text="<html>" + "x" * 60_000))
     finally:
         sess.close()
+
+
+# ---- uploads (search by image) --------------------------------------------------------------
+
+@hosted_only
+def test_upload_sessions_never_ride_the_gateway(tiers):
+    assert _exit_of("US") == ("gateway", "gateway")
+    assert fetch._proxy_for(sites.site("US"), gateway=False) == ("http://dc", "datacenter")
+    assert fetch._proxy_for(sites.site("JP"), gateway=False) == ("http://pin-jp", "residential")
+
+
+def test_upload_is_multipart_on_its_own_session_with_the_page_cookies(pool, monkeypatch):
+    made = []
+    real = fetch._multipart
+    monkeypatch.setattr(fetch, "_multipart", lambda files: made.append(files) or real(files))
+    pool.script([Resp(text='{"searchResults": []}')])
+    part = ("explore-looks.jpg", "explore-looks.jpg", "image/jpeg", b"\xff\xd8\xff jpeg")
+    resp = fetch.upload("US", "/stylesnap/upload", [part], params={"stylesnapToken": "T"},
+                        cookies=[("session-id", "S1", None, None)])
+    assert resp.text == '{"searchResults": []}' and made == [[part]]
+    sess = pool.minted[0]
+    assert sess.key == ("US", "upload", "en_US") and not sess.warmed           # no homepage warm-up
+    assert sess.curl.calls == [("POST", "https://www.amazon.com/stylesnap/upload")]
+    assert any(c.name == "session-id" and c.value == "S1" and c.domain == ".amazon.com" for c in sess.curl.cookies.jar)
+
+
+def test_a_failed_upload_stays_out_of_the_marketplaces_failure_ledger(pool, monkeypatch):
+    """An upload session is on the datacenter tier by choice: counted, two
+    failed uploads would move the marketplace's pages off the gateway for good."""
+    noted = []
+    monkeypatch.setattr(fetch, "_note_failure", lambda sess, reason: noted.append((sess.key[1], reason)))
+    part = ("explore-looks.jpg", "explore-looks.jpg", "image/jpeg", b"\xff\xd8\xff jpeg")
+    pool.script([Resp(text=CAPTCHA)])
+    with pytest.raises(fetch.AmazonBlocked):
+        fetch.upload("US", "/stylesnap/upload", [part])
+    pool.script([])                                         # no scripted answer: the send raises (a transport error)
+    with pytest.raises(fetch.AmazonUpstreamError):
+        fetch.upload("US", "/stylesnap/upload", [part])
+    assert noted == [] and all(sess.dead for sess in pool.minted)       # replaced, not counted
+    pool.script([Resp(text="<html>home</html>"), Resp(text=CAPTCHA)])
+    with pytest.raises(fetch.AmazonBlocked):
+        fetch.page("US", "/dp/B000", locate=False)
+    assert noted == [("page", "captcha")]                   # a page failure counts as before

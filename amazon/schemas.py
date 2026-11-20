@@ -18,12 +18,14 @@ marketplace is used (MarketplaceSchema.pre_load).
 from marshmallow import ValidationError, missing, post_load, pre_load, validate
 
 from amazon import refs, sites
+from amazon.image_search import COUNTRIES as IMAGE_SEARCH_COUNTRIES
 from amazon.products import CONDITIONS as OFFER_CONDITIONS
 from amazon.rankings import DEAL_SORTS, LIST_TYPES
 from amazon.search import CONDITIONS, DEAL_TYPES, SORTS
 from amazon.sellers import FEEDBACK_FILTERS, FEEDBACK_PERIODS, FEEDBACK_SORTS
 from schema_fields import (BaseSchema, ChoiceField, CommaListField, Flag, LanguageCodeField, LimitField, PageField,
                            PositiveInt, Price, QueryField, RefField, StrippedString)
+from scraper_utils import pictures
 
 
 # ---- fields ---------------------------------------------------------------------------------------------------
@@ -76,6 +78,10 @@ class SearchQueryField(RefField):
 
 class LinkField(RefField):
     resolver = staticmethod(refs.resolve_link)
+
+
+class ImageLinkField(RefField):
+    resolver = staticmethod(pictures.resolve_link)
 
 
 class PostalCodeField(StrippedString):
@@ -176,6 +182,15 @@ class CategoryProductsSchema(_SearchFilters):
 
 class LookupSchema(MarketplaceSchema):
     identifier = StrippedString(required=True, validate=validate.Regexp(r"^[\w\- ]{6,40}$", error="Must be a UPC / EAN / GTIN / ISBN."))
+
+
+class ImageSearchSchema(MarketplaceSchema):
+    """A picture link; StyleSnap exists on 8 of the 23 marketplaces (amazon/image_search.py)."""
+    image = ImageLinkField(metadata={
+        "description": "link to a picture (JPEG, PNG, WEBP or GIF), e.g. a product photo from any shop"})
+    country = CountryField(validate=validate.OneOf(
+        IMAGE_SEARCH_COUNTRIES, error=f"Search by image works on these marketplaces: {', '.join(IMAGE_SEARCH_COUNTRIES)}."),
+        metadata={"description": f"marketplace: {', '.join(IMAGE_SEARCH_COUNTRIES)} (default US)"})
 
 
 class AutocompleteSchema(BaseSchema):

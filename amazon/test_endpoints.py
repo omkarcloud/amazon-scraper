@@ -51,6 +51,18 @@ def test_search():
     assert body["results"] and "Atomic Habits" in body["results"][0]["title"]
 
 
+def test_search_by_image():
+    body = call("/amazon/products/search-by-image", image="https://m.media-amazon.com/images/I/71pLH5eO6jL.jpg")
+    assert body["matches_count"] > 20 and body["results"] and body["results"][0]["asin"] and body["more_results"]
+    assert body["results"][0]["price"]["currency"] == "USD" and body["detected_object"] and body["search_link"]
+    body = call("/amazon/products/search-by-image", image="https://m.media-amazon.com/images/I/71pLH5eO6jL.jpg",
+                country="DE")
+    assert body["country"] == "DE" and body["results"] and body["results"][0]["link"].startswith("https://www.amazon.de/")
+    assert status("/amazon/products/search-by-image", image="https://m.media-amazon.com/images/I/71pLH5eO6jL.jpg",
+                  country="CA") == 400
+    assert status("/amazon/products/search-by-image", image="https://www.amazon.com/") == 400
+
+
 def test_products():
     body = call("/amazon/products/details", product="B07QSFHT27")
     assert "PAVOI" in body["title"] and body["price"]["currency"] == "USD" and body["rating"]["count"] > 10000

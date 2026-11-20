@@ -12,6 +12,8 @@ from datetime import timedelta
 SEARCH_CACHE = timedelta(hours=1)
 CATEGORY_PRODUCTS_CACHE = timedelta(hours=1)
 LOOKUP_CACHE = timedelta(hours=6)
+# search by image: keyed on the picture link; matches and their prices move like search results
+IMAGE_SEARCH_CACHE = timedelta(hours=1)
 AUTOCOMPLETE_CACHE = timedelta(days=1)
 CATEGORIES_CACHE = timedelta(days=7)
 CATEGORY_TREE_CACHE = timedelta(days=3)

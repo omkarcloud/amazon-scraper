@@ -1385,3 +1385,82 @@ def suggestion(raw):
         "department_alias": (raw.get("scopes") or [{}])[0].get("alias") if raw.get("scopes") else None,
         "is_ghost": bool(raw.get("ghost")) or None,
     })
+
+
+# ---- search by image (StyleSnap upload answer) ------------------------------------------
+
+def _detected_object(properties):
+    """The part of the picture Amazon matched (its bounding box), as
+    fractions of the picture's width / height (independent of the size the
+    picture was uploaded at)."""
+    box = (properties or {}).get("boundingBox") or {}
+    width, height = box.get("imageWidth") or box.get("imw"), box.get("imageHeight") or box.get("imh")
+    left, top = box.get("topLeftX", box.get("tlx")), box.get("topLeftY", box.get("tly"))
+    right, bottom = box.get("bottomRightX", box.get("brx")), box.get("bottomRightY", box.get("bry"))
+    if not (width and height) or None in (left, top, right, bottom):
+        return None
+    return {"x": round(left / width, 4), "y": round(top / height, 4),
+            "width": round((right - left) / width, 4), "height": round((bottom - top) / height, 4)}
+
+
+def image_search_card(item, site):
+    """One detailed match (bbxAsinMetadataList) -> a product card; the
+    names follow the search cards (asin, title, brand, price, rating)."""
+    asin = (item or {}).get("asin")
+    if not asin:
+        return None
+    price = money(item.get("price"), site["currency"])
+    if price is not None:
+        price["list_price"] = amount_of(item.get("listPrice"))
+    rating, count = to_float(item.get("averageOverallRating"), 1), to_int(item.get("totalReviewCount"))
+    availability = item.get("availability")
+    return {
+        "asin": asin,
+        "title": clean(item.get("title")),
+        "brand": clean(item.get("byLine")),
+        "link": product_link(site, asin),
+        "image": full_image(item.get("imageUrl")),
+        "price": price,
+        "rating": {"average": rating, "count": count} if rating is not None or count is not None else None,
+        "availability": availability.lower() if isinstance(availability, str) and availability else None,
+        "variation_asins": [v["asin"] for v in item.get("twisterVariations") or [] if isinstance(v, dict) and v.get("asin")],
+        "colors": [{"asin": c.get("asin"), "hex": c.get("hexColor")} for c in item.get("colorSwatches") or []
+                   if isinstance(c, dict) and c.get("hexColor")],
+    }
+
+
+def image_search(payload, site):
+    """A StyleSnap upload answer -> the matches. searchResults[0] is the
+    object Amazon matched: every matched ASIN in Amazon's order with its
+    score (bbxAsinList / subContent, ~50-70) and details for some of them
+    (bbxAsinMetadataList: 30 on .com, 8-25 elsewhere, not always the first
+    ones; 2026-11-20). Detailed matches are `results`, the rest
+    `more_results` (ASIN, link, score); `position` is the place in Amazon's
+    full order."""
+    found = ((payload or {}).get("searchResults") or [None])[0] or {}
+    scores = {}
+    for sub in found.get("subContent") or []:
+        if isinstance(sub, dict) and sub.get("contentType") == "ASIN" and sub.get("content"):
+            scores.setdefault(sub["content"], to_float((sub.get("properties") or {}).get("score"), 4))
+    order = [a for a in found.get("bbxAsinList") or [] if isinstance(a, str) and a] or list(scores)
+    position = {asin: n for n, asin in enumerate(dict.fromkeys(order), 1)}
+    results = []
+    for item in found.get("bbxAsinMetadataList") or []:
+        card = image_search_card(item, site)
+        if card and card["asin"] not in {r["asin"] for r in results}:
+            card["match_score"] = scores.get(card["asin"])
+            card["position"] = position.get(card["asin"])
+            results.append(card)
+    results.sort(key=lambda card: card["position"] or len(position) + 1)
+    detailed = {card["asin"] for card in results}
+    more = [{"asin": asin, "link": product_link(site, asin), "match_score": scores.get(asin), "position": n}
+            for asin, n in position.items() if asin not in detailed]
+    link = found.get("searchResultUrl")
+    return {
+        "detected_object": _detected_object(found.get("properties")),
+        # a detailed match Amazon left out of its order is still a match
+        "matches_count": len(position) + sum(1 for card in results if card["position"] is None),
+        "results": results,
+        "more_results": more,
+        "search_link": absolute(site, link) if link else None,
+    }

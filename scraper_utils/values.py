@@ -27,14 +27,17 @@ def g(obj, *path, default=None):
 
 
 def as_list(value):
+    """The value when it is a list, else []."""
     return value if isinstance(value, list) else []
 
 
 def as_dict(value):
+    """The value when it is a dict, else {}."""
     return value if isinstance(value, dict) else {}
 
 
 def bool_or_none(value):
+    """A real bool as it is; anything else (0, 1, "true") -> None."""
     return value if isinstance(value, bool) else None
 
 
@@ -112,6 +115,7 @@ def first_int(value):
 # ---- numbers with a meaning ----------------------------------------------------------------
 
 def rounded(value, digits=2):
+    """num() rounded to `digits` decimals; None when it is not a number."""
     out = num(value)
     return round(out, digits) if out is not None else None
 

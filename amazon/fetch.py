@@ -81,6 +81,17 @@ exit; JP / AU their pinned residential exit) for config.AMAZON_GATEWAY_PAUSE
 seconds (_note_failure); from there the residential switch above works as
 before.
 
+UPLOADS (search by image, 2026-11-20): the gateway exit re-encodes a binary
+request body on the way (StyleSnap's photo upload through it answered an
+empty match list every time; the same bytes through a datacenter exit, with
+the gateway session's cookies, answered 57 matches). So purpose "upload"
+sessions are pooled apart and never ride the gateway: they get the tier
+behind it (_proxy_for gateway=False), and the caller hands them the cookies
+of the page session that loaded the upload form (`cookies`, as aapi does).
+A failed upload session is replaced like any other, but stays out of the
+marketplace's failure ledger (_note_failure): that ledger decides the exit
+of the marketplace's pages, which ride another exit.
+
 FALLBACK HOOK: if Amazon ever starts serving a JavaScript challenge that
 no fingerprint passes, escalate the way g2 does — a patchright pool with
 flag "amazon" in config.CHROME_POOLS whose Chrome loads the storefront
@@ -291,7 +302,7 @@ class _Session(identity_pool.Identity):
 
 
 def _key(country, purpose="page", language=None):
-    """The pool key of a session: (marketplace, "page" | "aapi", storefront language)."""
+    """The pool key of a session: (marketplace, "page" | "aapi" | "upload", storefront language)."""
     site = sites.site(country)
     return (site["country"], purpose, language or site["language"])
 
@@ -301,7 +312,7 @@ def _mint(key, hint=None):
     picks (never warmed here: the first call warms it, like before)."""
     country, purpose, language = key
     site = sites.site(country)
-    proxy, egress = _proxy_for(site)
+    proxy, egress = _proxy_for(site, gateway=(purpose != "upload"))     # see UPLOADS above
     return _Session(site, proxy, http1=(purpose == "aapi"), language=language, egress=egress)
 
 
@@ -328,7 +339,7 @@ def _gateway_for(country):
     return config.gateway_exit(config.AMAZON_GATEWAY_EXITS.get(country))
 
 
-def _proxy_for(site):
+def _proxy_for(site, gateway=True):
     """(proxy, egress) for a NEW session of `site`, per config.AMAZON_EGRESS:
     a residential exit pinned to the country for storefronts that refuse
     foreign IPs, the AMAZON_PROXY_COUNTRY override, else a datacenter exit
@@ -340,9 +351,10 @@ def _proxy_for(site):
     marketplaces in config.AMAZON_GATEWAY_EXITS (_gateway_for): any other
     marketplace, and one whose gateway use is paused (_note_failure), gets
     the "datacenter" behaviour above unchanged — a pinned storefront its
-    residential exit."""
+    residential exit. `gateway=False` (upload sessions) always gets that
+    tier."""
     country = site["country"]
-    gateway = _gateway_for(country)
+    gateway = _gateway_for(country) if gateway else None
     if gateway:
         return gateway, "gateway"
     if site["exit_country"]:
@@ -599,13 +611,31 @@ def _referer(site, referer):
     return referer or f"{site['base']}/s?k=amazon"
 
 
+def _multipart(files):
+    """[(name, filename, content type, bytes)] -> a curl_cffi CurlMime (a
+    new one per send: curl owns the form while the request runs)."""
+    from curl_cffi import CurlMime
+    form = CurlMime()
+    for name, filename, content_type, data in files:
+        form.addpart(name=name, filename=filename, content_type=content_type, data=data)
+    return form
+
+
 def _render(sess, method, url, hdrs, *, purpose, clicks, params=None, data=None, json_body=None,
-            allow_redirects=True):
+            allow_redirects=True, files=None):
     """One navigation on a borrowed session with the inline tricks: the
     Akamai PoW, the "continue shopping" submits (`clicks`: a one-element
-    counter, CLICK_THROUGHS per call) and the locale cookie. Returns (resp,
-    block reason or None); transport errors propagate."""
+    counter, CLICK_THROUGHS per call) and the locale cookie. `files` makes
+    the body multipart (upload sessions). Returns (resp, block reason or
+    None); transport errors propagate."""
     def send():
+        if files:
+            form = _multipart(files)
+            try:
+                return sess.curl.request(method, url, params=params or None, multipart=form, headers=hdrs,
+                                         allow_redirects=allow_redirects)
+            finally:
+                form.close()
         return sess.curl.request(method, url, params=params or None, data=data, json=json_body, headers=hdrs,
                                  allow_redirects=allow_redirects)
     resp = send()
@@ -629,7 +659,7 @@ def _render(sess, method, url, hdrs, *, purpose, clicks, params=None, data=None,
 
 def _request(country, method, path, *, params=None, data=None, json_body=None, headers=None, purpose="page",
              locate=True, locate_first=False, postal_code=None, language=None, referer=None, label=None,
-             allow_redirects=True, cookies=None):
+             allow_redirects=True, cookies=None, files=None):
     """One storefront call with the block handling: another pooled session
     on a captcha / dogs page (the blocked one is retired; the fallback exit
     once the marketplace has failed enough), transport retries on 5xx /
@@ -651,6 +681,11 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
     url = path if path.startswith("http") else site["base"] + path
     label = label or url.split("?")[0]
     wanted = (postal_code or site["postal_code"]) if purpose == "page" and (locate or locate_first) else None
+    # An upload session sits on the tier behind the gateway by choice (see
+    # UPLOADS), so its failures say nothing about the exit the marketplace's
+    # pages ride: counted, two failed uploads would move the whole marketplace
+    # off the gateway to residential exits for good (_note_failure).
+    counted = purpose != "upload"
     attempt = 0
     blocks = 0
     clicks = [0]
@@ -681,7 +716,8 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
                         _locate_from(sess, page_resp.text, wanted)
                 if reason is None:
                     resp, reason = _render(sess, method, url, hdrs, purpose=purpose, clicks=clicks, params=params,
-                                           data=data, json_body=json_body, allow_redirects=allow_redirects)
+                                           data=data, json_body=json_body, allow_redirects=allow_redirects,
+                                           files=files)
                     if (reason is None and locate and wanted and resp.status_code == 200 and sess.located != wanted
                             and _locate_from(sess, resp.text, wanted)):
                         # the session now shops locally: render this page again on it
@@ -691,7 +727,8 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
                 reason = str(e)
                 resp = None
             except Exception as e:
-                _note_failure(sess, f"{type(e).__name__}: {e}")
+                if counted:
+                    _note_failure(sess, f"{type(e).__name__}: {e}")
                 sess.dead = True
                 attempt += 1
                 if attempt > RETRIES:
@@ -700,7 +737,8 @@ def _request(country, method, path, *, params=None, data=None, json_body=None, h
                 continue
             if reason:
                 blocks += 1
-                _note_failure(sess, reason)
+                if counted:
+                    _note_failure(sess, reason)
                 sess.dead = True
                 if blocks >= BLOCK_RETRIES:
                     raise AmazonBlocked(f"{label}: {reason} (after {blocks} sessions)")
@@ -765,6 +803,18 @@ def ajax_json(country, path, params=None, *, method="GET", data=None, json_body=
     except ValueError:
         dump_debug("non_json", text)
         raise AmazonUpstreamError(f"{label or path}: non-JSON body ({text[:80]!r})")
+
+
+def upload(country, path, files, *, params=None, headers=None, cookies=None, language=None, label=None):
+    """Multipart POST (`files` [(name, filename, content type, bytes)]) on
+    an upload session — never the gateway exit (see UPLOADS) — carrying
+    `cookies` [(name, value, domain, path)] from the page session that
+    loaded the form (page_cookies) -> the response, any status but 400 /
+    404 / 5xx / a block, which raise as for every call."""
+    site = sites.site(country)
+    cookies = [(name, value, domain or ("." + site["domain"]), cpath or "/") for name, value, domain, cpath in cookies or ()]
+    return _request(country, "POST", path, params=params, headers=headers or {"accept": "*/*"}, purpose="upload",
+                    locate=False, language=language, label=label or path, cookies=cookies, files=files)
 
 
 def page_cookies(country, language=None):

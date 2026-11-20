@@ -3,6 +3,7 @@ import re
 
 _TITLE_RE = re.compile(r"<title>([^<]*)</title>", re.I)
 
+# Text that only a Cloudflare challenge page carries (matched in lower case).
 CF_MARKERS = ("just a moment", "challenge-error-text", "cf-chl", "challenge-platform", "attention required")
 
 
