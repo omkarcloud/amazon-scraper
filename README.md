@@ -41,7 +41,7 @@ curl "http://localhost:8000/products/details?product=B07QSFHT27"
 }
 ```
 
-All 21 endpoints are now live at `http://localhost:8000`.
+All 22 endpoints are now live at `http://localhost:8000`.
 
 ## ✨ What Can I Get?
 
@@ -90,13 +90,13 @@ Want to check the data before setting anything up? The same API is hosted on Rap
 
 1. [Subscribe to the free plan](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/pricing) — 1,000 calls/month, no credit card.
 2. [Open the playground](https://rapidapi.com/OmkarCloud/api/best-amazon-scraper-free-1000-calls/playground). Click **Test Endpoint** to see data.
-3. Change the parameters or pick another endpoint. All 21 have working example values.
+3. Change the parameters or pick another endpoint. All 22 have working example values.
 
 Once you're happy with the data quality, run the open-source version above for **unlimited free** data.
 
 ## 📚 Endpoints
 
-21 endpoints cover everything you need.
+22 endpoints cover everything you need.
 
 | Endpoint | Path | Returns |
 |---|---|---|
@@ -108,6 +108,7 @@ Once you're happy with the data quality, run the open-source version above for *
 | Product Variations | `/products/variations` | Every size, color & style with its own ASIN |
 | Bulk Products | `/products/bulk` | Price, stock & rating for up to 10 products at once |
 | Product Lookup by Barcode | `/products/lookup` | Products matching a UPC, EAN, GTIN or ISBN |
+| Search By Image | `/products/search-by-image` | Products that look like any picture, with prices, ratings & match scores |
 | Best Sellers | `/best-sellers` | Top 100 Best Sellers, New Releases, Movers & Shakers & more |
 | Best Seller Categories | `/best-sellers/categories` | The full best sellers category tree |
 | Deals | `/deals` | Today's Deals with deal price, discount & end time |

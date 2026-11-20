@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 from bottle import request, response, route
 
 from cache import DontCache
-from amazon import influencers, products, rankings, schemas, search, sellers
+from amazon import image_search, influencers, products, rankings, schemas, search, sellers
 from schema_fields import load_query
 from scraper_errors import BadRequest, Blocked, NotFound, UpstreamError
 
@@ -94,6 +94,7 @@ ENDPOINTS = [
     ("/products/variations", schemas.ProductSchema, products.variations, False),
     ("/products/bulk", schemas.BulkSchema, products.bulk, False),
     ("/products/lookup", schemas.LookupSchema, search.lookup, False),
+    ("/products/search-by-image", schemas.ImageSearchSchema, image_search.search_by_image, False),
     ("/best-sellers", schemas.BestsellersSchema, rankings.bestsellers, True),
     ("/best-sellers/categories", schemas.BestsellerCategoriesSchema, rankings.bestseller_categories, False),
     ("/deals", schemas.DealsSchema, rankings.deals, True),
