@@ -192,6 +192,55 @@ def test_product_page_variants_book_gb():
 
 # ---- parsers: offers / best sellers ---------------------------------------------------------------------------
 
+AIRPODS_IMAGES = ["61SUj2aKoEL._AC_SL1500_.jpg", "611pEx7220L._AC_SL1500_.jpg", "81Zg3Ev2M5L._AC_SL1500_.jpg",
+                  "41QztOA1UuL._AC_SL1200_.jpg", "71d1WoCdwwL._AC_SL1500_.jpg", "71wkJxedzjL._AC_SL1500_.jpg",
+                  "51RcxVAXDWL._AC_SL1500_.jpg"]
+
+
+@pytest.mark.parametrize("country,asin", [("DE", "B0D1XD1ZV3"), ("GB", "B0D1XD1ZV3"), ("US", "B0D1XD1ZV3"),
+                                          ("DE", "B0FRN2RD1H"), ("GB", "B0FRN2RD1H"), ("US", "B0FRN2RD1H")])
+def test_product_page_images_from_the_image_block(country, asin):
+    """Pages captured 2026-11-25 (trimmed to the image blocks): the gallery is
+    the ImageBlockATF JS literal ('colorImages': {'initial':
+    A.$.parseJSON('[…]')}), and the variation widget's "colorImages" JSON is
+    {} on DE/GB and on products without colour variations — those answered
+    "images": [] before. Hi-res first, MAIN first, each picture once."""
+    d = P.product_page(raw(f"{country.lower()}_dp_{asin}_images.html"), sites.site(country))
+    images = d["images"]
+    assert len(images) == 7
+    assert [i["variant"] for i in images] == ["MAIN", "PT01", "PT02", "PT03", "PT04", "PT05", "PT06"]
+    assert all(i["link"].startswith("https://m.media-amazon.com/images/I/") and "_SL1" in i["link"] for i in images)
+    assert all(i["thumbnail"] and i["large"] for i in images)
+    assert len({i["link"] for i in images}) == 7
+    if asin == "B0D1XD1ZV3":
+        assert [i["link"].rsplit("/", 1)[1] for i in images] == AIRPODS_IMAGES
+
+
+def test_images_fallbacks():
+    """Without the gallery block: the variation widget's group of the colour
+    on the page, then the main <img> whatever its attribute order (Amazon
+    writes data-old-hires BEFORE id), its biggest data-a-dynamic-image entry
+    when it has no data-old-hires; a \\' inside the parseJSON string."""
+    widget = ('"landingAsinColor":"Red","colorImages":{"Blue":[{"hiRes":"https://m.media-amazon.com/images/I/B1.jpg"}],'
+              '"Red":[{"hiRes":null,"large":"https://m.media-amazon.com/images/I/R1._AC_.jpg",'
+              '"main":{"https://m.media-amazon.com/images/I/R1._AC_SX300_.jpg":[300,300],'
+              '"https://m.media-amazon.com/images/I/R1._AC_SX679_.jpg":[679,679]},"variant":"MAIN"}]}')
+    assert [i["link"] for i in P._images(widget)] == ["https://m.media-amazon.com/images/I/R1._AC_SX679_.jpg"]
+    tag = ('<img alt="x" src="https://m.media-amazon.com/images/I/M1._AC_SX342_.jpg" '
+           'data-old-hires="https://m.media-amazon.com/images/I/M1._AC_SL1500_.jpg" class="a-dynamic-image" id="landingImage">')
+    assert P._images('"colorImages":{}' + tag) == [{"link": "https://m.media-amazon.com/images/I/M1._AC_SL1500_.jpg",
+                                                     "thumbnail": None, "large": "https://m.media-amazon.com/images/I/M1._AC_SX342_.jpg",
+                                                     "variant": "MAIN"}]
+    dynamic = ('<img src="https://m.media-amazon.com/images/I/D1._SX38_.jpg" data-old-hires="" id="imgBlkFront" '
+               'data-a-dynamic-image="{&quot;https://m.media-amazon.com/images/I/D1._SX38_.jpg&quot;:[38,50],'
+               '&quot;https://m.media-amazon.com/images/I/D1._SY466_.jpg&quot;:[350,466]}">')
+    assert P._images(dynamic)[0]["link"] == "https://m.media-amazon.com/images/I/D1._SY466_.jpg"
+    quoted = ("'colorImages': { 'initial': A.$.parseJSON('[{\"hiRes\":\"https://m.media-amazon.com/images/I/Q1.jpg\","
+              "\"altText\":\"Kid\\'s set\"},{\"hiRes\":\"https://m.media-amazon.com/images/I/Q1._AC_SL1000_.jpg\"}]')}")
+    assert [i["link"] for i in P._images(quoted)] == ["https://m.media-amazon.com/images/I/Q1.jpg"]
+    assert P._images("") == [] and P._images('"colorImages":{}') == []
+
+
 def test_product_page_jewelry_facts_layout():
     d = P.product_page(raw("dp_B07QSFHT27.html"), US)
     assert d["title"].startswith("PAVOI") and d["bullets"][0].startswith("HIGHLIGHTS")

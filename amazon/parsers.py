@@ -598,25 +598,137 @@ def _variations(html_text, site):
             "count": len(products)}
 
 
-def _images(html_text):
+# The image block's own gallery of the product on the page (ImageBlockATF):
+#   'colorImages': { 'initial': A.$.parseJSON('[{"hiRes":…,"large":…,"main":{…}}, …]') }
+# a JS object literal, not JSON, so json_after('"colorImages"') never sees it.
+_GALLERY_RE = re.compile(r"""['"]colorImages['"]\s*:\s*\{\s*['"]initial['"]\s*:\s*""")
+_PARSE_JSON_CALL_RE = re.compile(r"""[\w$.]*parseJSON\(\s*'""")
+_JS_ESCAPE_RE = re.compile(r"\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)", re.S)
+_JS_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+_IMAGE_ID_RE = re.compile(r"/images/I/([^./]+)")
+_MAIN_IMAGE_TAG_RE = re.compile(r'<img\b[^>]*\bid="(?:landingImage|imgBlkFront|ebooksImgBlkFront)"[^>]*>')
+
+
+def _js_single_quoted(text_, start):
+    """The value of the JS string literal whose opening quote ends just
+    before `start` (the browser's unescape: \\' -> ', \\\\ -> \\, \\uXXXX)."""
+    i = start
+    while i < len(text_):
+        ch = text_[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "'":
+            break
+        i += 1
+    else:
+        return None
+
+    def unescape(m):
+        code = m.group(1)
+        if code[0] in "ux" and len(code) > 1:
+            return chr(int(code[1:], 16))
+        return _JS_ESCAPES.get(code, code)
+    return _JS_ESCAPE_RE.sub(unescape, text_[start:i])
+
+
+def _gallery_entries(html_text):
+    """The ImageBlockATF gallery entries ([] when the page has none). The list
+    is either a parseJSON('…') string (2026 layout, every marketplace) or a
+    plain array literal."""
+    for m in _GALLERY_RE.finditer(html_text):
+        j = m.end()
+        call = _PARSE_JSON_CALL_RE.match(html_text, j)
+        if call:
+            raw = _js_single_quoted(html_text, call.end())
+            try:
+                value = fastjson.loads(raw) if raw else None
+            except ValueError:
+                value = None
+        elif html_text.startswith("[", j):
+            value = balanced_json(html_text, j)
+        else:
+            continue
+        if isinstance(value, list) and value:
+            return value
+    return []
+
+
+def _largest(sizes):
+    """The link of the biggest picture in a {link: [width, height]} map."""
+    best, area = None, -1
+    for link, dims in (sizes or {}).items():
+        try:
+            size = int(dims[0]) * int(dims[1])
+        except (TypeError, ValueError, IndexError):
+            size = 0
+        if size > area:
+            best, area = link, size
+    return best
+
+
+def _twister_entries(html_text):
+    """The variation widget's colorImages JSON ({colour name: [entries]};
+    {} on products without colour/style variations): the group of the colour
+    on the page, else every group."""
     color_images = json_after(html_text, '"colorImages"')
+    if not isinstance(color_images, dict) or not color_images:
+        return []
+    if "initial" in color_images:
+        return color_images["initial"] or []
+    landing = (re.search(r'"landingAsinColor"\s*:\s*"((?:[^"\\]|\\.)*)"', html_text) or [None, None])[1]
+    if landing is not None:
+        try:
+            landing = fastjson.loads(f'"{landing}"')
+        except ValueError:
+            pass
+        if color_images.get(landing):
+            return color_images[landing]
+    return [entry for group in color_images.values() for entry in group or []]
+
+
+def _main_image_tag(html_text):
+    """The main picture's <img> (any attribute order): data-old-hires, else
+    the biggest data-a-dynamic-image entry, else src."""
+    tag = _MAIN_IMAGE_TAG_RE.search(html_text)
+    if not tag:
+        return None
+    tag = tag.group(0)
+
+    def value(name):
+        m = re.search(rf'\s{name}="([^"]*)"', tag)
+        return _html.unescape(m.group(1)).strip() if m and m.group(1).strip() else None
+    dynamic = value("data-a-dynamic-image")
+    try:
+        sizes = fastjson.loads(dynamic) if dynamic else None
+    except ValueError:
+        sizes = None
+    link = value("data-old-hires") or _largest(sizes if isinstance(sizes, dict) else None) or value("src")
+    return {"hiRes": link, "large": value("src") or link, "thumb": None, "variant": "MAIN"} if link else None
+
+
+def _images(html_text):
+    """The product's pictures, best quality first, each once: the image
+    block's gallery (every marketplace), else the variation widget's
+    colorImages, else the main <img> alone."""
+    entries = _gallery_entries(html_text) or _twister_entries(html_text)
+    if not entries:
+        entries = [e for e in [_main_image_tag(html_text)] if e]
     images = []
     seen = set()
-    if isinstance(color_images, dict):
-        groups = [color_images["initial"]] if "initial" in color_images else list(color_images.values())
-        for group in groups:
-            for entry in group or []:
-                link = entry.get("hiRes") or entry.get("large")
-                if not link or link in seen:
-                    continue
-                seen.add(link)
-                images.append({"link": link, "thumbnail": entry.get("thumb"), "large": entry.get("large"),
-                               "variant": entry.get("variant")})
-    if not images:
-        landing = re.search(r'id="landingImage"[^>]*\sdata-old-hires="([^"]+)"', html_text) or \
-            re.search(r'id="landingImage"[^>]*\ssrc="([^"]+)"', html_text)
-        if landing:
-            images.append({"link": landing.group(1), "thumbnail": None, "large": landing.group(1), "variant": "MAIN"})
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        main = entry.get("main") if isinstance(entry.get("main"), dict) else None
+        link = entry.get("hiRes") or _largest(main) or entry.get("large")
+        if not link:
+            continue
+        key = (_IMAGE_ID_RE.search(link) or [None, link])[1]
+        if key in seen:
+            continue
+        seen.add(key)
+        images.append({"link": link, "thumbnail": entry.get("thumb"), "large": entry.get("large"),
+                       "variant": entry.get("variant")})
     return images
 
 
